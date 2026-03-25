@@ -7,7 +7,8 @@ import {
 
 const assets = await getAssets({ globPattern: './examples/**/*.{ttl,rdf}' })
 
-const store = await createTriplestore({ assets })
+const { store, dropped } = createTriplestore({ assets })
+if (dropped.length) console.warn(`dropped ${dropped.length} quad(s)`, dropped)
 
 const query = `
 prefix foaf: <http://xmlns.com/foaf/0.1/>

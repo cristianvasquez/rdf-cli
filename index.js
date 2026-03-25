@@ -1,4 +1,5 @@
 import { prettyPrintTrig, prettyPrintTurtle } from './lib/convenience.js'
+import { rdfAssetsDiff } from './lib/diff.js'
 import { getAssets } from './lib/inputs.js'
 import { createTriplestore, doConstruct, doSelect } from './lib/localStore.js'
 import {
@@ -12,6 +13,7 @@ import {
 
 export {
   prettyPrintTrig, prettyPrintTurtle,
+  rdfAssetsDiff,
   getAssets,
   toString,
   toStream,
