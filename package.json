@@ -1,18 +1,20 @@
 {
-  "name": "rdf-assets",
+  "name": "rdf-cli",
   "version": "0.2.1",
-  "description": "",
+  "description": "CLI-only RDF stream processing toolkit",
   "type": "module",
-  "main": "index.js",
-  "directories": {
-    "lib": "lib"
+  "bin": {
+    "rdf-cli": "./bin/rdf-cli.js"
   },
   "files": [
-    "index.js",
-    "lib/**/*.js"
+    "bin/**/*.js",
+    "src/**/*.js",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "test": "echo \"no tests! Waw\""
+    "test": "bash tests/smoke.sh",
+    "smoke": "bash tests/smoke.sh"
   },
   "repository": {
     "type": "git",
@@ -27,6 +29,7 @@
   "dependencies": {
     "@rdfjs-elements/formats-pretty": "^0.6.7",
     "@rdfjs/formats": "^4.0.0",
+    "citty": "^0.1.6",
     "get-stream": "^9.0.1",
     "glob": "^13.0.6",
     "oxigraph": "^0.5.6",
