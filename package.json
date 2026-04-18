@@ -4,12 +4,16 @@
   "description": "",
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "rdf-cli": "./bin/rdf-cli.js"
+  },
   "directories": {
     "lib": "lib"
   },
   "files": [
     "index.js",
-    "lib/**/*.js"
+    "lib/**/*.js",
+    "bin/**/*.js"
   ],
   "scripts": {
     "test": "echo \"no tests! Waw\""
@@ -27,6 +31,7 @@
   "dependencies": {
     "@rdfjs-elements/formats-pretty": "^0.6.7",
     "@rdfjs/formats": "^4.0.0",
+    "citty": "^0.1.6",
     "get-stream": "^9.0.1",
     "glob": "^13.0.6",
     "oxigraph": "^0.5.6",
