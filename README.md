@@ -1,114 +1,124 @@
-# rdf-assets
+# rdf-cli
 
-A bunch of utilities to inspect RDF files, a wrapper.
+A bunch of shell commands to process RDF files with pipes.
 
-## Examples
+## Install
 
-Say you have a bunch of RDF files in various formats scattered throughout a directory tree.
-
-### Bundle in TRIG
-
-Then you can gather and bundle these files into TRIG format by utilizing
-a [glob pattern](https://en.wikipedia.org/wiki/Glob_(programming)).
-
-```js
-import { getAssets, toFile, TRIG } from '../index.js'
-
-const prefixes = { 'ex': 'http://example.org/' }
-
-const assets = await getAssets({ globPattern: './examples/data/**/*' })
-
-await toFile(assets, 'bundle.trig', { format: TRIG, prefixes })
+```bash
+pnpm install && pnpm link --global
 ```
 
-### Do SPARQL SELECT
+## How it works
 
-Or you can use SPARQL to query these files:
-
-```js
-import { createTriplestore, doSelect, getAssets } from '../index.js'
-
-const assets = await getAssets({ globPattern: './examples/**/*.{ttl,rdf}' })
-
-const store = await createTriplestore({ assets })
-
-const query = `
-prefix foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT ?s ?name
-WHERE {
-  graph ?g {
-       ?s foaf:name ?name .
-  }
-}
-`
-
-const rows = doSelect({ store, query })
-console.log(rows)
-
-/**
- * Outputs
- [
-     {
-         s: NamedNode { value: 'http://example.org/Alice' },
-         name: Literal { value: 'Alice', language: '', datatype: [NamedNode] }
-     },
-     {
-         s: NamedNode { value: 'http://example.org/Bob' },
-         name: Literal { value: 'Bob', language: '', datatype: [NamedNode] }
-     }
- ]
- */
+Commands talk to each other via N-Quads on stdout. Each file becomes a named graph (its `file://` URI). That graph info travels through the pipe and you can drop it with `to-triples` when you don't need it.
 
 ```
-
-### Do SPARQL CONSTRUCT
-
-Or display the results of a CONSTRUCT serialized in turtle
-
-```js
-import {
-  createTriplestore,
-  doConstruct,
-  getAssets,
-  prettyPrintTurtle,
-} from '../index.js'
-
-const assets = await getAssets({ globPattern: './examples/**/*' })
-
-const store = await createTriplestore({ assets })
-
-const query = `
-prefix foaf: <http://xmlns.com/foaf/0.1/>
-
-CONSTRUCT {
-  ?s ?p ?o
-}
-WHERE {
-  graph ?g {
-       ?s a foaf:Person .
-       ?s ?p ?o .
-  }
-}
-`
-
-const dataset = doConstruct({ store, query })
-const str = await prettyPrintTurtle({ dataset })
-console.log(str)
-
-/**
- * <http://example.org/Alice> a <http://xmlns.com/foaf/0.1/Person> ;
- *         <http://xmlns.com/foaf/0.1/knows> <http://example.org/Bob> ;
- *         <http://xmlns.com/foaf/0.1/name> "Alice" .
- *
- * <http://example.org/Bob> a <http://xmlns.com/foaf/0.1/Person> ;
- *         <http://xmlns.com/foaf/0.1/name> "Bob" ;
- *         <http://example.org/likes> <http://example.org/Alice> .
- */
-
+to-quads → [N-Quads stream] → to-triples / select / construct / serialize / pretty / diff
 ```
 
-See [examples](./examples) for details
+## Commands
 
-This uses [RDF JavaScript Libraries](https://rdf.js.org/) and [oxygraph](https://github.com/oxigraph/oxigraph) as
-in-memory triplestore.
+### `to-quads <glob...>`
+
+Parse RDF files into N-Quads. Each file gets its own named graph.
+
+```bash
+rdf-cli to-quads './data/**/*.ttl' './data/**/*.rdf'
+```
+
+Also reads from stdin if no glob is given (format auto-detected, or use `--format`):
+
+```bash
+curl https://example.org/data.ttl | rdf-cli to-quads --format turtle
+```
+
+### `to-triples`
+
+Drop the graph axis. Use this before `pretty --format turtle`.
+
+```bash
+rdf-cli to-quads ./**/*.ttl | rdf-cli to-triples
+```
+
+### `pretty`
+
+Pretty-print as Turtle (default) or TriG.
+
+```bash
+rdf-cli to-quads ./**/*.ttl | rdf-cli to-triples | rdf-cli pretty
+rdf-cli to-quads ./**/*.ttl | rdf-cli pretty --format trig
+```
+
+Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--prefixes <file>`.
+
+```json
+{ "foaf": "http://xmlns.com/foaf/0.1/", "ex": "http://example.org/" }
+```
+
+### `select <query>`
+
+SPARQL SELECT → CSV (default), TSV, or JSON lines.
+
+```bash
+rdf-cli to-quads ./**/*.ttl | rdf-cli select "SELECT ?s ?name WHERE { GRAPH ?g { ?s foaf:name ?name } }"
+rdf-cli to-quads ./**/*.ttl | rdf-cli select "SELECT ..." --output tsv
+rdf-cli to-quads ./**/*.ttl | rdf-cli select --query-file query.sparql --output json
+```
+
+Note: triples live in named graphs, so queries need `GRAPH ?g { }` unless you pipe through `to-triples` first.
+
+### `construct <query>`
+
+SPARQL CONSTRUCT → N-Quads (stays in the pipe).
+
+```bash
+rdf-cli to-quads ./**/*.ttl | rdf-cli construct "CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s a foaf:Person . ?s ?p ?o } }" | rdf-cli pretty
+```
+
+### `serialize`
+
+Compact N-Quads (default, preserves graphs) or N-Triples.
+
+```bash
+rdf-cli to-quads ./**/*.ttl | rdf-cli serialize > bundle.nq
+rdf-cli to-quads ./**/*.ttl | rdf-cli serialize --format ntriples > bundle.nt
+```
+
+### `diff <old> <new>`
+
+Compare two N-Quads files. Emits a single N-Quads stream with added triples in `<urn:added>` and removed in `<urn:removed>`.
+
+```bash
+rdf-cli diff <(rdf-cli to-quads old/*.ttl) <(rdf-cli to-quads new/*.ttl) | rdf-cli pretty --format trig
+```
+
+```trig
+<urn:added> {
+  <http://example.org/Alice> <http://xmlns.com/foaf/0.1/knows> <http://example.org/Carol> .
+}
+<urn:removed> {
+  <http://example.org/Alice> <http://xmlns.com/foaf/0.1/knows> <http://example.org/Bob> .
+}
+```
+
+Diff is triple-level (graph info stripped before comparison).
+
+## Pipelines
+
+```bash
+# bundle everything into one trig file
+rdf-cli to-quads ./**/*.ttl | rdf-cli serialize > bundle.nq
+
+# pretty-print flat turtle from multiple files
+rdf-cli to-quads ./**/*.ttl | rdf-cli to-triples | rdf-cli pretty
+
+# query and get CSV
+rdf-cli to-quads ./**/*.ttl | rdf-cli select "SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }" > results.csv
+
+# construct then pretty
+rdf-cli to-quads ./**/*.ttl | rdf-cli construct --query-file build.sparql | rdf-cli pretty --format trig
+```
+
+## Dependencies
+
+[RDF JavaScript Libraries](https://rdf.js.org/) and [Oxigraph](https://github.com/oxigraph/oxigraph) as in-memory triplestore.
