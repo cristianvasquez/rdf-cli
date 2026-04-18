@@ -2,87 +2,144 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLI="$ROOT/bin/rdf-cli.js"
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+CLI="node $ROOT/bin/rdf-cli.js"
+DATA="$ROOT/examples/data"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
-fail() {
-  printf 'smoke test failed: %s\n' "$1" >&2
+pass=0
+fail=0
+
+ok() { printf '  ok  %s\n' "$1"; pass=$((pass+1)); }
+fail() { printf ' FAIL %s\n' "$1" >&2; fail=$((fail+1)); }
+
+assert_contains()    { [[ "$1" == *"$2"* ]] && ok "$3" || fail "$3: expected to contain: $2"; }
+assert_not_contains(){ [[ "$1" != *"$2"* ]] && ok "$3" || fail "$3: expected to omit: $2"; }
+assert_lines()       { local n; n=$(printf '%s' "$1" | grep -c .); [[ "$n" == "$2" ]] && ok "$3" || fail "$3: expected $2 lines, got $n"; }
+assert_empty()       { [[ -z "$1" ]] && ok "$2" || fail "$2: expected empty output"; }
+
+# ---------------------------------------------------------------------------
+printf '\nto-quads\n'
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>"$TMP/err")
+assert_lines    "$out" 7                                        "7 quads from two files"
+assert_contains "$out" "<file://$DATA/alice-knows-bob.rdf>"    "rdf file gets named graph"
+assert_contains "$out" "<file://$DATA/bob-likes-alice.ttl>"    "ttl file gets named graph"
+assert_empty    "$(cat "$TMP/err")"                            "no stderr for valid files"
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/with-errors/wrong-turtle.ttl" 2>"$TMP/err" || true)
+assert_contains "$(cat "$TMP/err")" "wrong-turtle.ttl"         "parse error goes to stderr"
+assert_contains "$out" "Alice"                                 "valid file still emits quads"
+
+# ---------------------------------------------------------------------------
+printf '\nto-triples\n'
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI to-triples)
+assert_lines        "$out" 7   "same quad count as N-Triples"
+assert_not_contains "$out" "file://" "graph URIs are gone"
+
+# ---------------------------------------------------------------------------
+printf '\nselect\n'
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI select 'SELECT ?name WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?name } }')
+assert_contains "$out" "name"  "header row present"
+assert_contains "$out" "Alice" "Alice in results"
+assert_contains "$out" "Bob"   "Bob in results"
+assert_lines    "$out" 3       "header + 2 results"
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI select 'SELECT ?name WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?name } }' --output tsv)
+assert_contains "$out" "Alice" "tsv: Alice present"
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI select 'SELECT ?name WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?name } }' --output json)
+assert_contains "$out" '"Alice"' "json: Alice present"
+
+# ---------------------------------------------------------------------------
+printf '\nconstruct\n'
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI construct 'CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?o . ?s ?p ?o } }')
+assert_not_contains "$out" "file://"          "construct output is in default graph"
+
+nq_lines=$(printf '%s' "$out" | grep -c ' \. *$' || true)
+[[ "$nq_lines" -gt 0 ]] && ok "construct emits N-Quads" || fail "construct emits N-Quads: got no quads"
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI construct 'CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?o . ?s ?p ?o } }' \
+      | $CLI to-triples \
+      | $CLI pretty)
+assert_contains "$out" "Alice" "construct | to-triples | pretty works"
+
+# ---------------------------------------------------------------------------
+printf '\nserialize\n'
+
+out=$($CLI to-quads "$DATA/bob-likes-alice.ttl" 2>/dev/null | $CLI serialize)
+assert_contains     "$out" "file://" "nquads: graph term present"
+assert_lines        "$out" 3         "nquads: 3 quads from one file"
+
+out=$($CLI to-quads "$DATA/bob-likes-alice.ttl" 2>/dev/null | $CLI serialize --format ntriples)
+assert_not_contains "$out" "file://" "ntriples: graph term absent"
+assert_lines        "$out" 3         "ntriples: 3 triples"
+
+# ---------------------------------------------------------------------------
+printf '\npretty\n'
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI to-triples | $CLI pretty)
+assert_contains     "$out" "Alice"    "turtle: Alice present"
+assert_not_contains "$out" "file://" "turtle: no graph URIs"
+
+out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
+      | $CLI pretty --format trig)
+assert_contains "$out" "file://"       "trig: named graphs present"
+assert_contains "$out" "alice-knows-bob.rdf>" "trig: rdf graph"
+assert_contains "$out" "bob-likes-alice.ttl>" "trig: ttl graph"
+
+# ---------------------------------------------------------------------------
+printf '\ndiff\n'
+
+out=$($CLI diff \
+  <($CLI to-quads "$DATA/alice-knows-bob.rdf" 2>/dev/null) \
+  <($CLI to-quads "$DATA/alice-knows-carol.ttl" 2>/dev/null))
+assert_contains "$out" "<urn:added>"   "diff: added graph present"
+assert_contains "$out" "<urn:removed>" "diff: removed graph present"
+assert_contains "$out" "Carol"         "diff: Carol in added"
+assert_contains "$out" "Bob"           "diff: Bob in removed"
+
+out=$($CLI diff \
+  <($CLI to-quads "$DATA/alice-knows-bob.rdf" 2>/dev/null) \
+  <($CLI to-quads "$DATA/alice-knows-bob.rdf" 2>/dev/null))
+assert_empty "$out" "diff of identical files is empty"
+
+# ---------------------------------------------------------------------------
+printf '\nstdin format detection\n'
+
+out=$(cat "$DATA/bob-likes-alice.ttl" | $CLI to-quads --format turtle)
+assert_contains "$out" "Bob"     "stdin turtle: quads emitted"
+assert_lines    "$out" 3         "stdin turtle: 3 quads"
+
+out=$(printf '<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n' \
+      | $CLI to-quads)
+assert_contains "$out" "example.org/s" "stdin autodetect n-triples"
+
+# ---------------------------------------------------------------------------
+printf '\nprefixes autodiscovery\n'
+
+cat >"$TMP/.prefixes.json" <<'EOF'
+{"ex":"http://example.org/","foaf":"http://xmlns.com/foaf/0.1/"}
+EOF
+out=$(cd "$TMP" && $CLI to-quads "$DATA/bob-likes-alice.ttl" 2>/dev/null | $CLI pretty)
+assert_contains "$out" "@prefix ex:"   "prefix ex: applied"
+assert_contains "$out" "@prefix foaf:" "prefix foaf: applied"
+
+# ---------------------------------------------------------------------------
+printf '\n'
+if [[ "$fail" -eq 0 ]]; then
+  printf 'all %d tests passed\n' "$pass"
+else
+  printf '%d passed, %d failed\n' "$pass" "$fail" >&2
   exit 1
-}
-
-assert_contains() {
-  local haystack="$1"
-  local needle="$2"
-  [[ "$haystack" == *"$needle"* ]] || fail "expected output to contain: $needle"
-}
-
-assert_not_contains() {
-  local haystack="$1"
-  local needle="$2"
-  [[ "$haystack" != *"$needle"* ]] || fail "expected output to omit: $needle"
-}
-
-assert_line_count() {
-  local text="$1"
-  local expected="$2"
-  local actual
-  actual="$(printf '%s' "$text" | awk 'END { print NR }')"
-  [[ "$actual" == "$expected" ]] || fail "expected $expected lines, got $actual"
-}
-
-to_quads_stdout="$TMP_DIR/to-quads.stdout"
-to_quads_stderr="$TMP_DIR/to-quads.stderr"
-node "$CLI" to-quads './examples/data/*.{ttl,rdf}' >"$to_quads_stdout" 2>"$to_quads_stderr"
-assert_contains "$(cat "$to_quads_stderr")" 'wrong-turtle.ttl'
-assert_contains "$(cat "$to_quads_stdout")" 'file://./examples/data/bob-likes-alice.ttl'
-assert_contains "$(cat "$to_quads_stdout")" 'file://./examples/data/alice-knows-bob.rdf'
-assert_line_count "$(cat "$to_quads_stdout")" 7
-
-triples_output="$(
-  node "$CLI" to-quads './examples/data/*.{ttl,rdf}' 2>"$TMP_DIR/pipeline.stderr" |
-    node "$CLI" to-triples
-)"
-assert_not_contains "$triples_output" 'file://'
-assert_line_count "$triples_output" 7
-
-select_output="$(
-  node "$CLI" to-quads './examples/data/*.{ttl,rdf}' 2>"$TMP_DIR/select.stderr" |
-    node "$CLI" select 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?s ?name WHERE { GRAPH ?g { ?s foaf:name ?name } }'
-)"
-assert_contains "$(cat "$TMP_DIR/select.stderr")" 'wrong-turtle.ttl'
-[[ "$select_output" == $'s,name\nhttp://example.org/Alice,Alice\nhttp://example.org/Bob,Bob' ]] \
-  || fail 'unexpected csv output from select'
-
-construct_output="$(
-  node "$CLI" to-quads './examples/data/*.{ttl,rdf}' 2>"$TMP_DIR/construct.stderr" |
-    node "$CLI" construct 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s a foaf:Person . ?s ?p ?o } }' |
-    node "$CLI" pretty
-)"
-assert_contains "$construct_output" 'http://example.org/Alice'
-assert_contains "$construct_output" 'http://example.org/Bob'
-assert_contains "$construct_output" 'http://xmlns.com/foaf/0.1/name'
-
-cat >"$TMP_DIR/old.nq" <<'EOF'
-<http://example.org/Alice> <http://example.org/likes> <http://example.org/Bob> <http://example.org/g> .
-EOF
-cat >"$TMP_DIR/new.nq" <<'EOF'
-<http://example.org/Alice> <http://example.org/likes> <http://example.org/Carol> <http://example.org/g> .
-<http://example.org/Alice> <http://example.org/name> "Alice" <http://example.org/g> .
-EOF
-diff_output="$(node "$CLI" diff "$TMP_DIR/old.nq" "$TMP_DIR/new.nq")"
-assert_contains "$diff_output" '<urn:added>'
-assert_contains "$diff_output" '<urn:removed>'
-assert_contains "$diff_output" 'Carol'
-assert_contains "$diff_output" 'Bob'
-
-cat >"$TMP_DIR/.prefixes.json" <<'EOF'
-{"ex":"http://example.org/"}
-EOF
-prefix_output="$(
-  cd "$TMP_DIR"
-  printf '%s\n' '<http://example.org/Alice> <http://example.org/name> "Alice" .' | node "$CLI" pretty
-)"
-assert_contains "$prefix_output" '@prefix ex:'
-
-printf 'smoke tests passed\n'
+fi
