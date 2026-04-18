@@ -1,0 +1,35 @@
+version: 1
+enabled: true
+group: "rdf"
+
+indexing:
+  include:
+    # Glob patterns for files to index. Matching is case-sensitive on Linux.
+    # "readme.md"      - only the root readme
+    # "docs/**"        - all text files under docs/ (qmd expands to all known extensions)
+    # "docs/**/*.md"   - only markdown files under docs/
+    # "**/*.md"        - all markdown files anywhere in the repo
+    # "**/*.ttl"       - all Turtle RDF files anywhere in the repo
+    # - "{README,readme}.md"
+    # - "docs/**"
+    - "**/*.md"
+  exclude:
+    # Patterns to skip regardless of include rules.
+    - ".env"
+    - ".env.*"
+    - "node_modules/**"
+    - "__pycache__/**"
+    - ".venv/**"
+    - "venv/**"
+    - "env/**"
+    - ".tox/**"
+    - ".nox/**"
+    - "site-packages/**"
+    # Hidden directories (e.g. .git, .venv)
+    - ".*/**"
+
+triplifier:
+  enabled: true   # extract RDF triples and load into Oxigraph
+
+qmd:
+  enabled: true   # full-text index via qmd
