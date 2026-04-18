@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l lib/*.js examples/*.js index.js)",
+      "Bash(find /home/cvasquez/github.com/cristianvasquez/rdf-assets -not -path */node_modules/* -not -path */.git/* -type f)",
+      "Bash(grep -n \"throw\\\\|Error\\\\|catch\\\\|try\" lib/*.js)",
+      "Bash(grep -h \"^import\\\\|^export\" lib/*.js index.js)",
+      "Bash(npm outdated:*)",
+      "Bash(pnpm install:*)",
+      "Bash(node:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm outdated:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

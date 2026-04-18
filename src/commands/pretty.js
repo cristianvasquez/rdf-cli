@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
-import { toString, TURTLE, TRIG } from '../../lib/outputs.js'
-import { readStdin, resolveFormat, loadPrefixes } from '../lib/io.js'
+import { readStdin, resolveFormat, loadPrefixes } from '../io.js'
+import { datasetToString, TRIG, TURTLE } from '../outputs.js'
 
 export default defineCommand({
   meta: { name: 'pretty', description: 'N-Quads stdin → pretty-printed Turtle or TriG' },
@@ -10,10 +10,9 @@ export default defineCommand({
     'input-format': { type: 'string', description: 'Input format (default: n-quads)' },
   },
   async run({ args }) {
-    const inputFormat = resolveFormat(args['input-format']) || 'application/n-quads'
-    const outputFormat = args.format.toLowerCase() === 'trig' ? TRIG : TURTLE
-    const dataset = await readStdin(inputFormat)
+    const dataset = await readStdin(resolveFormat(args['input-format']) || 'application/n-quads')
+    const format = args.format.toLowerCase() === 'trig' ? TRIG : TURTLE
     const prefixes = await loadPrefixes(args.prefixes)
-    process.stdout.write(await toString([{ dataset }], { format: outputFormat, prefixes }))
+    process.stdout.write(await datasetToString(dataset, { format, prefixes }))
   },
 })

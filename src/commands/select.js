@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty'
-import { readFile } from 'fs/promises'
-import { datasetToStore, storeSelect } from '../lib/store.js'
-import { readStdin, resolveFormat } from '../lib/io.js'
+import { readFile } from 'node:fs/promises'
+import { readStdin, resolveFormat } from '../io.js'
+import { datasetToStore, storeSelect } from '../store.js'
 
 function termValue(term) {
   if (!term) return ''
@@ -21,7 +21,7 @@ function toCSV(rows) {
   const headers = Object.keys(rows[0])
   return [
     headers.join(','),
-    ...rows.map(row => headers.map(h => csvEscape(termValue(row[h]))).join(',')),
+    ...rows.map(row => headers.map(header => csvEscape(termValue(row[header]))).join(',')),
   ].join('\n') + '\n'
 }
 
@@ -30,15 +30,14 @@ function toTSV(rows) {
   const headers = Object.keys(rows[0])
   return [
     headers.join('\t'),
-    ...rows.map(row => headers.map(h => termValue(row[h]).replace(/\t/g, ' ')).join('\t')),
+    ...rows.map(row => headers.map(header => termValue(row[header]).replace(/\t/g, ' ')).join('\t')),
   ].join('\n') + '\n'
 }
 
 function toJSONL(rows) {
-  return rows.map(row => {
-    const obj = Object.fromEntries(Object.entries(row).map(([k, v]) => [k, termValue(v)]))
-    return JSON.stringify(obj)
-  }).join('\n') + (rows.length ? '\n' : '')
+  return rows
+    .map(row => JSON.stringify(Object.fromEntries(Object.entries(row).map(([key, value]) => [key, termValue(value)]))))
+    .join('\n') + (rows.length ? '\n' : '')
 }
 
 export default defineCommand({
@@ -50,19 +49,20 @@ export default defineCommand({
     format: { type: 'string', alias: 'f', description: 'Input format (default: n-quads)' },
   },
   async run({ args }) {
-    const queryStr = args['query-file']
-      ? await readFile(args['query-file'], 'utf8')
-      : args.query
-    if (!queryStr) {
+    const query = args['query-file'] ? await readFile(args['query-file'], 'utf8') : args.query
+    if (!query) {
       process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
       process.exit(1)
     }
-    const dataset = await readStdin(resolveFormat(args.format) || 'application/n-quads')
-    const store = datasetToStore(dataset)
-    const rows = storeSelect(store, queryStr)
-    const out = (args.output || 'csv').toLowerCase()
-    if (out === 'tsv') process.stdout.write(toTSV(rows))
-    else if (out === 'json') process.stdout.write(toJSONL(rows))
+
+    const rows = storeSelect(
+      datasetToStore(await readStdin(resolveFormat(args.format) || 'application/n-quads')),
+      query,
+    )
+    const output = (args.output || 'csv').toLowerCase()
+
+    if (output === 'tsv') process.stdout.write(toTSV(rows))
+    else if (output === 'json') process.stdout.write(toJSONL(rows))
     else process.stdout.write(toCSV(rows))
   },
 })

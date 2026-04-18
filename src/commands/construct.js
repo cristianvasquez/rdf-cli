@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty'
-import { readFile } from 'fs/promises'
-import { datasetToStore, storeConstruct } from '../lib/store.js'
-import { readStdin, resolveFormat, writeDatasetAsNQ } from '../lib/io.js'
+import { readFile } from 'node:fs/promises'
+import { readStdin, resolveFormat, writeDatasetAsNQ } from '../io.js'
+import { datasetToStore, storeConstruct } from '../store.js'
 
 export default defineCommand({
   meta: { name: 'construct', description: 'SPARQL CONSTRUCT on N-Quads stdin → N-Quads stdout' },
@@ -11,15 +11,17 @@ export default defineCommand({
     format: { type: 'string', alias: 'f', description: 'Input format (default: n-quads)' },
   },
   async run({ args }) {
-    const queryStr = args['query-file']
-      ? await readFile(args['query-file'], 'utf8')
-      : args.query
-    if (!queryStr) {
+    const query = args['query-file'] ? await readFile(args['query-file'], 'utf8') : args.query
+    if (!query) {
       process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
       process.exit(1)
     }
-    const dataset = await readStdin(resolveFormat(args.format) || 'application/n-quads')
-    const store = datasetToStore(dataset)
-    writeDatasetAsNQ(storeConstruct(store, queryStr))
+
+    writeDatasetAsNQ(
+      storeConstruct(
+        datasetToStore(await readStdin(resolveFormat(args.format) || 'application/n-quads')),
+        query,
+      ),
+    )
   },
 })

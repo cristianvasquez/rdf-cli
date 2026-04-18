@@ -1,6 +1,6 @@
 # rdf-cli
 
-A bunch of shell commands to process RDF files with pipes.
+A CLI-only toolkit to process RDF files with pipes.
 
 ## Install
 
@@ -117,6 +117,17 @@ rdf-cli to-quads ./**/*.ttl | rdf-cli select "SELECT ?s ?p ?o WHERE { GRAPH ?g {
 
 # construct then pretty
 rdf-cli to-quads ./**/*.ttl | rdf-cli construct --query-file build.sparql | rdf-cli pretty --format trig
+```
+
+## Examples
+
+The `examples/` directory now contains shell scripts that exercise the CLI directly:
+
+```bash
+bash examples/read-assets.sh
+bash examples/do-select.sh
+bash examples/do-construct.sh
+bash examples/trig-bundle.sh
 ```
 
 ## Dependencies
