@@ -6,7 +6,7 @@ QUERY='PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 CONSTRUCT { ?s foaf:name ?name }
 WHERE { GRAPH ?g { ?s foaf:name ?name } }'
 
-rdf-cli to-quads 'examples/data/*.ttl' 'examples/data/*.rdf' \
+rdf-cli to-quads 'examples/data/*' \
   | rdf-cli construct "$QUERY" \
   | rdf-cli to-triples \
   | rdf-cli pretty
