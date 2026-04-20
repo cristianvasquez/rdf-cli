@@ -31,7 +31,9 @@ export async function parseFile(filePath, graphFactory = defaultGraphFactory) {
 
     await dataset.import(formats.parsers.import(mimeType, createReadStream(filePath, 'utf8')))
     for (const quad of [...dataset]) {
-      quad.graph = graphFactory(filePath)
+      if (quad.graph.termType === 'DefaultGraph') {
+        quad.graph = graphFactory(filePath)
+      }
     }
 
     return { path: filePath, dataset }

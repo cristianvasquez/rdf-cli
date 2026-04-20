@@ -27,6 +27,18 @@ assert_contains "$out" "<file://$DATA/alice-knows-bob.rdf>"    "rdf file gets na
 assert_contains "$out" "<file://$DATA/bob-likes-alice.ttl>"    "ttl file gets named graph"
 assert_empty    "$(cat "$TMP/err")"                            "no stderr for valid files"
 
+out=$($CLI to-quads "$DATA/two-graphs.trig" 2>"$TMP/err")
+assert_contains "$out" "<urn:g1>"                              "trig keeps first named graph"
+assert_contains "$out" "<urn:g2>"                              "trig keeps second named graph"
+assert_not_contains "$out" "two-graphs.trig>"                  "trig does not overwrite named graphs"
+assert_empty    "$(cat "$TMP/err")"                            "no stderr for valid trig"
+
+out=$($CLI to-quads "$DATA/two-graphs.nq" 2>"$TMP/err")
+assert_contains "$out" "<urn:g1>"                              "nquads keeps first named graph"
+assert_contains "$out" "<urn:g2>"                              "nquads keeps second named graph"
+assert_not_contains "$out" "two-graphs.nq>"                    "nquads does not overwrite named graphs"
+assert_empty    "$(cat "$TMP/err")"                            "no stderr for valid nquads"
+
 out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/with-errors/wrong-turtle.ttl" 2>"$TMP/err" || true)
 assert_contains "$(cat "$TMP/err")" "wrong-turtle.ttl"         "parse error goes to stderr"
 assert_contains "$out" "Alice"                                 "valid file still emits quads"

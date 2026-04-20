@@ -1,8 +1,9 @@
 ---
 repo-uri: osg://repo/github.com/cristianvasquez/rdf-assets
 repo-name: rdf-cli
+layout: node.js
 ---
-# [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-cli)
+# [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-assets)
 
 A CLI-only toolkit to process RDF files with pipes.
 
