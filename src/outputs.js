@@ -1,4 +1,5 @@
-import { TrigSerializer, TurtleSerializer } from '@rdfjs-elements/formats-pretty'
+import trigWrite from '@graphy/content.trig.write'
+import ttlWrite from '@graphy/content.ttl.write'
 import getStream from 'get-stream'
 import rdf from 'rdf-ext'
 import { Readable } from 'node:stream'
@@ -6,7 +7,7 @@ import { Readable } from 'node:stream'
 export const TURTLE = 'text/turtle'
 export const TRIG = 'application/trig'
 
-async function combineInSink(sink, dataset, mapQuad = quad => quad) {
+function datasetToStream(dataset, mapQuad = quad => quad) {
   const stream = new Readable({
     objectMode: true,
     read() {},
@@ -14,23 +15,22 @@ async function combineInSink(sink, dataset, mapQuad = quad => quad) {
 
   dataset.forEach(quad => stream.push(mapQuad(quad)))
   stream.push(null)
-  return sink.import(stream)
+  return stream
 }
 
 async function toTurtleString(dataset, prefixes = {}) {
-  const serializer = new TurtleSerializer({ prefixes })
-  const stream = await combineInSink(
-    serializer,
+  const writer = ttlWrite({ prefixes })
+  datasetToStream(
     dataset,
     quad => rdf.quad(quad.subject, quad.predicate, quad.object),
-  )
-  return getStream(stream)
+  ).pipe(writer)
+  return getStream(writer)
 }
 
 async function toTrigString(dataset, prefixes = {}) {
-  const serializer = new TrigSerializer({ prefixes })
-  const stream = await combineInSink(serializer, dataset)
-  return getStream(stream)
+  const writer = trigWrite({ prefixes })
+  datasetToStream(dataset).pipe(writer)
+  return getStream(writer)
 }
 
 export async function datasetToString(dataset, { format, prefixes }) {

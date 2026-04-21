@@ -1,3 +1,8 @@
+---
+uuid: 4d701c7f-30fd-4d11-8939-c8fe72629e3f
+repo-group: rdf
+---
+
 # rdf-cli semantics
 
 This document defines the semantic contract of `rdf-cli` inputs and outputs.

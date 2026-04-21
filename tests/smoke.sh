@@ -17,6 +17,23 @@ assert_contains()    { [[ "$1" == *"$2"* ]] && ok "$3" || fail "$3: expected to 
 assert_not_contains(){ [[ "$1" != *"$2"* ]] && ok "$3" || fail "$3: expected to omit: $2"; }
 assert_lines()       { local n; n=$(printf '%s' "$1" | grep -c .); [[ "$n" == "$2" ]] && ok "$3" || fail "$3: expected $2 lines, got $n"; }
 assert_empty()       { [[ -z "$1" ]] && ok "$2" || fail "$2: expected empty output"; }
+assert_rdf_parseable() {
+  local file="$1" format="$2" label="$3"
+  if node --input-type=module -e "
+    import { readFileSync } from 'node:fs'
+    import { Readable } from 'node:stream'
+    import formats from '@rdfjs/formats'
+    import rdf from 'rdf-ext'
+
+    const input = readFileSync(process.argv[1], 'utf8')
+    const dataset = rdf.dataset()
+    await dataset.import(formats.parsers.import(process.argv[2], Readable.from([input])))
+  " "$file" "$format"; then
+    ok "$label"
+  else
+    fail "$label: output is not parseable as $format"
+  fi
+}
 
 # ---------------------------------------------------------------------------
 printf '\nto-quads\n'
@@ -109,6 +126,22 @@ out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/d
 assert_contains "$out" "file://"       "trig: named graphs present"
 assert_contains "$out" "alice-knows-bob.rdf>" "trig: rdf graph"
 assert_contains "$out" "bob-likes-alice.ttl>" "trig: ttl graph"
+
+cat >"$TMP/backslash-newline.ttl" <<'EOF'
+<http://example/s> <http://example/p> """hello \\
+world""" .
+EOF
+
+out=$($CLI to-quads "$TMP/backslash-newline.ttl" 2>/dev/null \
+      | $CLI to-triples \
+      | $CLI pretty)
+printf '%s' "$out" >"$TMP/backslash-newline.pretty.ttl"
+assert_rdf_parseable "$TMP/backslash-newline.pretty.ttl" "text/turtle" "turtle: multiline backslash literal round-trips"
+
+out=$($CLI to-quads "$TMP/backslash-newline.ttl" 2>/dev/null \
+      | $CLI pretty --format trig)
+printf '%s' "$out" >"$TMP/backslash-newline.pretty.trig"
+assert_rdf_parseable "$TMP/backslash-newline.pretty.trig" "application/trig" "trig: multiline backslash literal round-trips"
 
 # ---------------------------------------------------------------------------
 printf '\ndiff\n'
