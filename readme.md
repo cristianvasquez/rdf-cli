@@ -30,13 +30,13 @@ to-quads → [N-Quads stream] → to-triples / select / construct / serialize / 
 Parse RDF files into N-Quads. Each file gets its own named graph.
 
 ```bash
-rdf-cli to-quads './data/**/*.ttl' './data/**/*.rdf'
+rdf to-quads './data/**/*.ttl' './data/**/*.rdf'
 ```
 
 Also reads from stdin if no glob is given (format auto-detected, or use `--format`):
 
 ```bash
-curl https://example.org/data.ttl | rdf-cli to-quads --format turtle
+curl https://example.org/data.ttl | rdf to-quads --format turtle
 ```
 
 ### `to-triples`
@@ -44,7 +44,7 @@ curl https://example.org/data.ttl | rdf-cli to-quads --format turtle
 Drop the graph axis. Use this before `pretty --format turtle`.
 
 ```bash
-rdf-cli to-quads ./**/*.ttl | rdf-cli to-triples
+rdf to-quads ./**/*.ttl | rdf to-triples
 ```
 
 ### `pretty`
@@ -52,8 +52,8 @@ rdf-cli to-quads ./**/*.ttl | rdf-cli to-triples
 Pretty-print as Turtle (default) or TriG.
 
 ```bash
-rdf-cli to-quads ./**/*.ttl | rdf-cli to-triples | rdf-cli pretty
-rdf-cli to-quads ./**/*.ttl | rdf-cli pretty --format trig
+rdf to-quads ./**/*.ttl | rdf to-triples | rdf pretty
+rdf to-quads ./**/*.ttl | rdf pretty --format trig
 ```
 
 Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--prefixes <file>`.
@@ -67,9 +67,9 @@ Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--p
 SPARQL SELECT → CSV (default), TSV, or JSON lines.
 
 ```bash
-rdf-cli to-quads ./**/*.ttl | rdf-cli select "SELECT ?s ?name WHERE { GRAPH ?g { ?s foaf:name ?name } }"
-rdf-cli to-quads ./**/*.ttl | rdf-cli select "SELECT ..." --output tsv
-rdf-cli to-quads ./**/*.ttl | rdf-cli select --query-file query.sparql --output json
+rdf to-quads ./**/*.ttl | rdf select "SELECT ?s ?name WHERE { GRAPH ?g { ?s foaf:name ?name } }"
+rdf to-quads ./**/*.ttl | rdf select "SELECT ..." --output tsv
+rdf to-quads ./**/*.ttl | rdf select --query-file query.sparql --output json
 ```
 
 Note: triples live in named graphs, so queries need `GRAPH ?g { }` unless you pipe through `to-triples` first.
@@ -79,7 +79,7 @@ Note: triples live in named graphs, so queries need `GRAPH ?g { }` unless you pi
 SPARQL CONSTRUCT → N-Quads (stays in the pipe).
 
 ```bash
-rdf-cli to-quads ./**/*.ttl | rdf-cli construct "CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s a foaf:Person . ?s ?p ?o } }" | rdf-cli pretty
+rdf to-quads ./**/*.ttl | rdf construct "CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s a foaf:Person . ?s ?p ?o } }" | rdf pretty
 ```
 
 ### `serialize`
@@ -87,8 +87,8 @@ rdf-cli to-quads ./**/*.ttl | rdf-cli construct "CONSTRUCT { ?s ?p ?o } WHERE { 
 Compact N-Quads (default, preserves graphs) or N-Triples.
 
 ```bash
-rdf-cli to-quads ./**/*.ttl | rdf-cli serialize > bundle.nq
-rdf-cli to-quads ./**/*.ttl | rdf-cli serialize --format ntriples > bundle.nt
+rdf to-quads ./**/*.ttl | rdf serialize > bundle.nq
+rdf to-quads ./**/*.ttl | rdf serialize --format ntriples > bundle.nt
 ```
 
 ### `diff <old> <new>`
@@ -96,7 +96,7 @@ rdf-cli to-quads ./**/*.ttl | rdf-cli serialize --format ntriples > bundle.nt
 Compare two N-Quads files. Emits a single N-Quads stream with added triples in `<urn:added>` and removed in `<urn:removed>`.
 
 ```bash
-rdf-cli diff <(rdf-cli to-quads old/*.ttl) <(rdf-cli to-quads new/*.ttl) | rdf-cli pretty --format trig
+rdf diff <(rdf to-quads old/*.ttl) <(rdf to-quads new/*.ttl) | rdf pretty --format trig
 ```
 
 ```trig
@@ -114,16 +114,16 @@ Diff is triple-level (graph info stripped before comparison).
 
 ```bash
 # bundle everything into one trig file
-rdf-cli to-quads ./**/*.ttl | rdf-cli serialize > bundle.nq
+rdf to-quads ./**/*.ttl | rdf serialize > bundle.nq
 
 # pretty-print flat turtle from multiple files
-rdf-cli to-quads ./**/*.ttl | rdf-cli to-triples | rdf-cli pretty
+rdf to-quads ./**/*.ttl | rdf to-triples | rdf pretty
 
 # query and get CSV
-rdf-cli to-quads ./**/*.ttl | rdf-cli select "SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }" > results.csv
+rdf to-quads ./**/*.ttl | rdf select "SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }" > results.csv
 
 # construct then pretty
-rdf-cli to-quads ./**/*.ttl | rdf-cli construct --query-file build.sparql | rdf-cli pretty --format trig
+rdf to-quads ./**/*.ttl | rdf construct --query-file build.sparql | rdf pretty --format trig
 ```
 
 ## Examples

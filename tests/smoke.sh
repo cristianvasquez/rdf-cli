@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLI="node $ROOT/bin/rdf-cli.js"
+CLI="node $ROOT/bin/rdf.js"
 DATA="$ROOT/examples/data"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

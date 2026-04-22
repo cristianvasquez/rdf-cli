@@ -9,7 +9,7 @@ import diff from './commands/diff.js'
 
 const main = defineCommand({
   meta: {
-    name: 'rdf-cli',
+    name: 'rdf',
     version: '0.2.1',
     description: 'RDF stream processing CLI',
   },

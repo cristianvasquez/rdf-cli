@@ -2,9 +2,9 @@
 repo-group: rdf
 ---
 
-# rdf-cli stream algebra
+# rdf stream algebra
 
-This document proposes a small stream algebra for `rdf-cli` and related tools such as `rdf-shacl`.
+This document proposes a small stream algebra for `rdf` and related tools such as `rdf-shacl`.
 
 The goal is composability through explicit stream kinds, minimal command roles, and graph semantics that preserve graphless statements by default.
 
