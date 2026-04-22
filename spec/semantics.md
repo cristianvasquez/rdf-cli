@@ -9,65 +9,78 @@ This document defines the semantic contract of `rdf-cli` inputs and outputs.
 
 ## Core model
 
-- Commands communicate over stdout using RDF streams.
-- The canonical in-pipe representation is N-Quads.
+- Commands communicate over stdout using streams with explicit semantic kinds.
+- The semantic center of the RDF pipeline is a dataset stream.
+- A dataset stream is a sequence of RDF statements interpreted under dataset semantics.
+- At the carrier level, dataset-stream items may be represented as RDFJS `Quad` values.
+- A statement may use the RDF default graph or a named graph.
+- Graphless statements must be preserved as graphless unless a command explicitly changes graph policy.
 - A command either reads RDF from stdin, reads files named on the command line, or both as explicitly documented.
 - Errors go to stderr. Valid inputs should still produce output when another input in the same invocation fails.
 
+## Stream kinds
+
+- `rdf-cli` primarily works with dataset streams.
+- Some commands are sinks that render dataset streams as text.
+- `select` is different: it consumes a dataset stream and emits tabular bindings, not RDF.
+
 ## Graph semantics
 
-- `to-quads <file...>` parses each input file into a dataset and writes N-Quads.
-- For quads parsed from a file whose graph is the RDF default graph, `to-quads` assigns the graph `<file://...>` for that file path.
-- For quads parsed from a file whose graph is already named, `to-quads` preserves that graph exactly.
-- This means single-graph sources such as Turtle, N-Triples, N3, and RDF/XML become one named graph per file.
-- This also means multi-graph sources such as TriG and N-Quads preserve their explicit graph structure, while any default-graph quads from those files are promoted to the file URI graph.
-- `to-quads` reading from stdin does not invent a file graph because stdin has no file identity.
-- `to-triples` removes graph terms and writes N-Triples.
+- The pipeline model is dataset-first, not quad-first.
+- Triples and quads are both first-class at the semantic level.
+- Commands preserve graph presence or absence unless their purpose is to change graph policy.
 - `select` and `construct` operate on the graphs present in their stdin dataset.
+- `construct` remains in dataset space: it emits RDF statements, which may be graphless, named, or mixed.
 - `serialize` preserves the input dataset semantics in the requested serialization, subject to the target format's ability to encode graphs.
 - `pretty --format turtle` requires graphless input for faithful Turtle output; use `to-triples` first when dropping graphs is intended.
+- `pretty --format trig` preserves named graphs and may serialize graphless statements as default-graph content.
 
 ## Input semantics by command
 
 ### `to-quads`
 
-- With one or more path or glob arguments: reads matching files, parses each independently, and emits one combined N-Quads stream.
+- With one or more path or glob arguments: reads matching files, parses each independently, and emits one combined dataset stream encoded as N-Quads.
 - With no path arguments: reads RDF from stdin.
 - Stdin format is auto-detected when possible, or can be forced with `--format`.
+- When reading from stdin, `to-quads` preserves graphless statements as graphless.
+- When reading from file paths, source-derived graph assignment is command policy, not a general dataset invariant.
 
 ### `to-triples`
 
-- Reads N-Quads from stdin by default.
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
 - `--format` may override the stdin parser format.
 - Writes N-Triples with all graph information removed.
+- Semantically, this is an explicit graph-dropping step.
 
 ### `select`
 
-- Reads N-Quads from stdin by default.
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
 - `--format` may override the stdin parser format.
 - Executes the supplied SPARQL SELECT query against the full dataset.
-- Writes tabular results, not RDF.
+- Writes bindings-oriented tabular results, not RDF.
 
 ### `construct`
 
-- Reads N-Quads from stdin by default.
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
 - `--format` may override the stdin parser format.
 - Executes the supplied SPARQL CONSTRUCT query against the full dataset.
-- Writes the constructed dataset as N-Quads on stdout.
+- Writes the constructed dataset on stdout using N-Quads as the default encoding.
+- The constructed output may contain graphless statements, named graphs, or both.
 
 ### `serialize`
 
-- Reads N-Quads from stdin by default.
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
 - `--format` chooses the output serialization.
 - Output defaults to N-Quads.
 - Serializing to a triples-only format drops graph information because the target format cannot encode it.
 
 ### `pretty`
 
-- Reads N-Quads from stdin by default.
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
 - `--input-format` may override the stdin parser format.
 - `--format turtle` produces pretty Turtle for graphless datasets.
 - `--format trig` produces pretty TriG and preserves named graphs.
+- `pretty` is a sink: it renders the dataset stream for humans rather than preserving a machine-oriented RDF pipe format.
 
 ### `diff`
 
