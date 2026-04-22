@@ -23,6 +23,7 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - `rdf` primarily works with dataset streams.
 - Some commands are sinks that render dataset streams as text.
 - `select` is different: it consumes a dataset stream and emits tabular bindings, not RDF.
+- `validate` is a dataset -> dataset transform that appends a report graph.
 
 ## Graph semantics
 
@@ -31,6 +32,7 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - Commands preserve graph presence or absence unless their purpose is to change graph policy.
 - `select` and `construct` operate on the graphs present in their stdin dataset.
 - `construct` remains in dataset space: it emits RDF statements, which may be graphless, named, or mixed.
+- `validate` remains in dataset space: it appends SHACL report statements in a named report graph while preserving the input data stream.
 - `graph-assign <iri>` assigns a named graph to graphless statements and preserves existing named graphs.
 - `graph-drop` removes graph terms while staying in dataset space.
 - `serialize` preserves the input dataset semantics in the requested serialization, subject to the target format's ability to encode graphs.
@@ -79,6 +81,13 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - Executes the supplied SPARQL CONSTRUCT query against the full dataset.
 - Writes the constructed dataset on stdout using N-Quads as the default encoding.
 - The constructed output may contain graphless statements, named graphs, or both.
+
+### `validate`
+
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
+- Loads shapes from `--shapes` and/or bundled shapes from `--builtin`.
+- Appends the validation report as a named graph while preserving the original input data.
+- Exits with code `1` when the report does not conform, but still writes data plus report to stdout.
 
 ### `graph-assign`
 

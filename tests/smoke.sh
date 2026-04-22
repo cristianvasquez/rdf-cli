@@ -101,6 +101,45 @@ out=$(printf '%s\n%s\n' "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 
   | $CLI pretty)
 assert_contains "$out" "Alice" "construct | pretty: turtle renders graphless construct output"
 
+printf '\nvalidate\n'
+
+out=$(printf '%s\n' "$ROOT/tests/fixtures/person-valid.ttl" \
+  | $CLI from-paths \
+  | $CLI validate --shapes "$ROOT/tests/fixtures/person-shape.ttl")
+assert_contains "$out" "<urn:validation-report>" "validate custom: default report graph present"
+assert_contains "$out" "example.org/alice" "validate custom: input data preserved"
+
+if printf '%s\n' "$ROOT/tests/fixtures/person-invalid.ttl" \
+  | $CLI from-paths \
+  | $CLI validate --shapes "$ROOT/tests/fixtures/person-shape.ttl" \
+  >"$TMP/person-invalid.nq"; then
+  fail "validate custom: expected invalid data to fail"
+else
+  ok "validate custom: invalid data exits non-zero"
+fi
+assert_contains "$(cat "$TMP/person-invalid.nq")" "<urn:validation-report>" "validate custom: invalid report still emitted"
+
+out=$(printf '%s\n' "$ROOT/tests/fixtures/person-shape.ttl" \
+  | $CLI from-paths \
+  | $CLI validate --builtin shacl --report-graph urn:report:meta)
+assert_contains "$out" "<urn:report:meta>" "validate builtin shacl: custom report graph present"
+
+out=$(printf '%s\n' "$ROOT/tests/fixtures/skos-valid.ttl" \
+  | $CLI from-paths \
+  | $CLI validate --builtin skos)
+assert_contains "$out" "<urn:validation-report>" "validate builtin skos: default report graph present"
+
+if printf '%s\n' "$ROOT/tests/fixtures/skos-invalid.ttl" \
+  | $CLI from-paths \
+  | $CLI validate --builtin skos --markdown-report \
+  >"$TMP/skos-invalid.nq" 2>"$TMP/skos-invalid.err"; then
+  fail "validate builtin skos: expected invalid data to fail"
+else
+  ok "validate builtin skos: invalid data exits non-zero"
+fi
+assert_contains "$(cat "$TMP/skos-invalid.nq")" "<urn:validation-report>" "validate builtin skos: invalid report still emitted"
+assert_contains "$(cat "$TMP/skos-invalid.err")" "SHACL Validation (SKOS)" "validate builtin skos: markdown report on stderr"
+
 printf '\ngraph policy\n'
 
 out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \

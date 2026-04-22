@@ -205,6 +205,10 @@ These primitives are enough to make the system feel like lego pieces.
 - Output: dataset stream
 - Adds report statements while keeping input data in the stream.
 
+In the current CLI this primitive is exposed as:
+
+- `rdf validate`
+
 ### `graph assign`
 
 - Input: dataset stream
@@ -250,6 +254,7 @@ The current CLI surface follows the algebra with these primitive commands:
 - `select`
 - `table`
 - `construct`
+- `validate`
 - `graph-assign`
 - `graph-drop`
 - `pretty`

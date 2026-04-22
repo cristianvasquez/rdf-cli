@@ -1,0 +1,18 @@
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ex: <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix vann: <http://purl.org/vocab/vann/> .
+
+ex:scheme
+  a skos:ConceptScheme ;
+  skos:prefLabel "Example vocabulary"@en ;
+  dct:description "Example vocabulary for smoke tests."@en ;
+  dct:license <http://example.org/license> ;
+  vann:preferredNamespaceUri "http://example.org/concept/" ;
+  skos:hasTopConcept ex:concept-1 .
+
+ex:concept-1
+  a skos:Concept ;
+  skos:prefLabel "Alpha"@en ;
+  skos:inScheme ex:scheme ;
+  skos:topConceptOf ex:scheme .

@@ -22,6 +22,7 @@ The executable is `rdf`.
 - `glob` produces a path stream
 - `from-paths` and `from-stdin` produce a dataset stream
 - `select` produces a bindings stream
+- `validate` keeps you in dataset space by appending a SHACL report graph
 - `table` and `pretty` are sinks to text
 
 By default, graphless statements remain graphless. Graph assignment is explicit.
@@ -88,6 +89,25 @@ rdf glob './data/**/*.ttl' \
   | rdf from-paths \
   | rdf construct 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' \
   | rdf pretty
+```
+
+### `validate`
+
+Validate a dataset stream against custom or built-in SHACL shapes. The original data stays in the stream and the validation report is appended as a named graph.
+
+```bash
+rdf glob './data.ttl' \
+  | rdf from-paths \
+  | rdf validate --shapes './shapes.ttl' \
+  | rdf pretty --format trig
+```
+
+Use bundled shapes when they are standard enough to deserve a first-class shortcut:
+
+```bash
+rdf glob './vocab.ttl' \
+  | rdf from-paths \
+  | rdf validate --builtin skos --markdown-report
 ```
 
 ### `graph-assign <iri>`

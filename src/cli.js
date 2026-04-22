@@ -5,6 +5,7 @@ import fromStdin from './commands/from-stdin.js'
 import select from './commands/select.js'
 import table from './commands/table.js'
 import construct from './commands/construct.js'
+import validate from './commands/validate.js'
 import serialize from './commands/serialize.js'
 import pretty from './commands/pretty.js'
 import graphAssign from './commands/graph-assign.js'
@@ -23,6 +24,7 @@ const main = defineCommand({
     select,
     table,
     construct,
+    validate,
     'graph-assign': graphAssign,
     'graph-drop': graphDrop,
     serialize,
