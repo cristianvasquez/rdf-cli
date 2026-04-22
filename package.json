@@ -19,14 +19,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cristianvasquez/rdf-assets.git"
+    "url": "git+https://github.com/cristianvasquez/rdf-cli.git"
   },
   "author": "Cristian Vasquez",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/cristianvasquez/rdf-assets/issues"
+    "url": "https://github.com/cristianvasquez/rdf-cli/issues"
   },
-  "homepage": "https://github.com/cristianvasquez/rdf-assets#readme",
+  "homepage": "https://github.com/cristianvasquez/rdf-cli#readme",
   "dependencies": {
     "@graphy/content.trig.write": "^4.3.7",
     "@graphy/content.ttl.write": "^4.3.7",

@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { getStreamAsBuffer } from 'get-stream'
 import { join } from 'node:path'
+import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 
@@ -57,6 +58,22 @@ export async function readStdin(hintFormat) {
   return readDatasetFromStream(process.stdin, hintFormat, 'error: cannot detect stdin format — use --format')
 }
 
+export function readQuadStream(stream, format) {
+  return formats.parsers.import(format, stream)
+}
+
+export function readQuadStreamFromStdin(format) {
+  return readQuadStream(process.stdin, format)
+}
+
+export async function* readLines(stream) {
+  const rl = createInterface({ input: stream, crlfDelay: Infinity })
+  for await (const line of rl) {
+    const trimmed = line.trim()
+    if (trimmed) yield trimmed
+  }
+}
+
 export async function loadPrefixes(prefixFile) {
   const candidates = [
     prefixFile,
@@ -103,7 +120,17 @@ export function termToNQ(term) {
 
 export function writeDatasetAsNQ(dataset) {
   for (const quad of dataset) {
-    const graph = quad.graph.termType === 'DefaultGraph' ? '' : ` ${termToNQ(quad.graph)}`
-    process.stdout.write(`${termToNQ(quad.subject)} ${termToNQ(quad.predicate)} ${termToNQ(quad.object)}${graph} .\n`)
+    writeQuadAsNQ(quad)
+  }
+}
+
+export function writeQuadAsNQ(quad) {
+  const graph = quad.graph.termType === 'DefaultGraph' ? '' : ` ${termToNQ(quad.graph)}`
+  process.stdout.write(`${termToNQ(quad.subject)} ${termToNQ(quad.predicate)} ${termToNQ(quad.object)}${graph} .\n`)
+}
+
+export async function writeQuadStreamAsNQ(stream, mapQuad = quad => quad) {
+  for await (const quad of stream) {
+    writeQuadAsNQ(mapQuad(quad))
   }
 }

@@ -10,9 +10,9 @@ function termValue(term) {
 }
 
 function toJSONL(rows) {
-  return rows
-    .map(row => JSON.stringify(Object.fromEntries(Object.entries(row).map(([key, value]) => [key, termValue(value)]))))
-    .join('\n') + (rows.length ? '\n' : '')
+  for (const row of rows) {
+    process.stdout.write(`${JSON.stringify(Object.fromEntries(Object.entries(row).map(([key, value]) => [key, termValue(value)])))}\n`)
+  }
 }
 
 export default defineCommand({
@@ -29,10 +29,9 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const rows = storeSelect(
+    toJSONL(storeSelect(
       datasetToStore(await readStdin(resolveFormat(args.format) || 'application/n-quads')),
       query,
-    )
-    process.stdout.write(toJSONL(rows))
+    ))
   },
 })

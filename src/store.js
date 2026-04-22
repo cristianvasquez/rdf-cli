@@ -38,12 +38,10 @@ export function storeConstruct(store, query) {
   return dataset
 }
 
-export function storeSelect(store, query) {
-  const rows = []
+export function* storeSelect(store, query) {
   for (const binding of store.query(query)) {
     const row = Object.fromEntries(binding)
     for (const [key, value] of Object.entries(row)) row[key] = termInstance(value)
-    rows.push(row)
+    yield row
   }
-  return rows
 }

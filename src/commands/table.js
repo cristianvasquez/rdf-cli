@@ -1,4 +1,5 @@
 import { defineCommand } from 'citty'
+import { readLines } from '../io.js'
 
 function csvEscape(value) {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -7,42 +8,24 @@ function csvEscape(value) {
   return value
 }
 
-function toCSV(rows) {
-  if (rows.length === 0) return ''
-  const headers = Object.keys(rows[0])
-  return [
-    headers.join(','),
-    ...rows.map(row => headers.map(header => csvEscape(String(row[header] ?? ''))).join(',')),
-  ].join('\n') + '\n'
+function writeCSVHeader(headers) {
+  process.stdout.write(`${headers.join(',')}\n`)
 }
 
-function toTSV(rows) {
-  if (rows.length === 0) return ''
-  const headers = Object.keys(rows[0])
-  return [
-    headers.join('\t'),
-    ...rows.map(row => headers.map(header => String(row[header] ?? '').replace(/\t/g, ' ')).join('\t')),
-  ].join('\n') + '\n'
+function writeCSVRow(row, headers) {
+  process.stdout.write(`${headers.map(header => csvEscape(String(row[header] ?? ''))).join(',')}\n`)
 }
 
-function toJSONL(rows) {
-  return rows.map(row => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : '')
+function writeTSVHeader(headers) {
+  process.stdout.write(`${headers.join('\t')}\n`)
 }
 
-async function readRows() {
-  const input = await new Promise((resolve, reject) => {
-    let text = ''
-    process.stdin.setEncoding('utf8')
-    process.stdin.on('data', chunk => { text += chunk })
-    process.stdin.on('end', () => resolve(text))
-    process.stdin.on('error', reject)
-  })
+function writeTSVRow(row, headers) {
+  process.stdout.write(`${headers.map(header => String(row[header] ?? '').replace(/\t/g, ' ')).join('\t')}\n`)
+}
 
-  return input
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => JSON.parse(line))
+function writeJSONLRow(row) {
+  process.stdout.write(`${JSON.stringify(row)}\n`)
 }
 
 export default defineCommand({
@@ -51,11 +34,25 @@ export default defineCommand({
     format: { type: 'string', alias: 'f', description: 'Output format: csv (default), tsv, jsonl', default: 'csv' },
   },
   async run({ args }) {
-    const rows = await readRows()
     const format = (args.format || 'csv').toLowerCase()
+    let headers = null
 
-    if (format === 'tsv') process.stdout.write(toTSV(rows))
-    else if (format === 'jsonl') process.stdout.write(toJSONL(rows))
-    else process.stdout.write(toCSV(rows))
+    for await (const line of readLines(process.stdin)) {
+      const row = JSON.parse(line)
+
+      if (format === 'jsonl') {
+        writeJSONLRow(row)
+        continue
+      }
+
+      if (!headers) {
+        headers = Object.keys(row)
+        if (format === 'tsv') writeTSVHeader(headers)
+        else writeCSVHeader(headers)
+      }
+
+      if (format === 'tsv') writeTSVRow(row, headers)
+      else writeCSVRow(row, headers)
+    }
   },
 })

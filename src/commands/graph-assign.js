@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
 import rdf from 'rdf-ext'
-import { readStdin, resolveFormat, writeDatasetAsNQ } from '../io.js'
+import { readQuadStreamFromStdin, resolveFormat, writeQuadStreamAsNQ } from '../io.js'
 
 export default defineCommand({
   meta: { name: 'graph-assign', description: 'Assign a named graph to graphless statements' },
@@ -15,18 +15,14 @@ export default defineCommand({
     }
 
     const graph = rdf.namedNode(args.graph)
-    const input = await readStdin(resolveFormat(args.format) || 'application/n-quads')
-    const dataset = rdf.dataset()
-
-    for (const quad of input) {
-      dataset.add(rdf.quad(
+    await writeQuadStreamAsNQ(
+      readQuadStreamFromStdin(resolveFormat(args.format) || 'application/n-quads'),
+      quad => rdf.quad(
         quad.subject,
         quad.predicate,
         quad.object,
         quad.graph.termType === 'DefaultGraph' ? graph : quad.graph,
-      ))
-    }
-
-    writeDatasetAsNQ(dataset)
+      ),
+    )
   },
 })
