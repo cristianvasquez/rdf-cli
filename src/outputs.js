@@ -19,6 +19,12 @@ function datasetToStream(dataset, mapQuad = quad => quad) {
 }
 
 async function toTurtleString(dataset, prefixes = {}) {
+  for (const quad of dataset) {
+    if (quad.graph.termType !== 'DefaultGraph') {
+      throw new Error('turtle output requires graphless input; use graph-drop first')
+    }
+  }
+
   const writer = ttlWrite({ prefixes })
   datasetToStream(
     dataset,

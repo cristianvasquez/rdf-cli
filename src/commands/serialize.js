@@ -2,7 +2,7 @@ import { defineCommand } from 'citty'
 import { readStdin, resolveFormat, termToNQ, writeDatasetAsNQ } from '../io.js'
 
 export default defineCommand({
-  meta: { name: 'serialize', description: 'N-Quads stdin → compact N-Quads or N-Triples' },
+  meta: { name: 'serialize', description: 'Serialize dataset stream as N-Quads or N-Triples' },
   args: {
     format: { type: 'string', alias: 'f', description: 'Output format: nquads (default) or ntriples', default: 'nquads' },
     'input-format': { type: 'string', description: 'Input format (default: n-quads)' },

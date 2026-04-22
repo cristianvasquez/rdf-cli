@@ -16,11 +16,13 @@ function guessMimeType(filePath) {
   return MIME_TYPES[filePath.slice(filePath.lastIndexOf('.'))]
 }
 
-function defaultGraphFactory() {
-  return rdf.defaultGraph()
+export function pathToFileGraph(path) {
+  const normalized = path.replace(/\\/g, '/')
+  if (/^[a-zA-Z]:/.test(normalized)) return rdf.namedNode(`file:///${normalized}`)
+  return rdf.namedNode(`file://${normalized.startsWith('/') ? '' : './'}${normalized}`)
 }
 
-export async function parseFile(filePath, graphFactory = defaultGraphFactory) {
+export async function parseFile(filePath) {
   const dataset = rdf.dataset()
 
   try {
@@ -30,11 +32,6 @@ export async function parseFile(filePath, graphFactory = defaultGraphFactory) {
     }
 
     await dataset.import(formats.parsers.import(mimeType, createReadStream(filePath, 'utf8')))
-    for (const quad of [...dataset]) {
-      if (quad.graph.termType === 'DefaultGraph') {
-        quad.graph = graphFactory(filePath)
-      }
-    }
 
     return { path: filePath, dataset }
   } catch (error) {

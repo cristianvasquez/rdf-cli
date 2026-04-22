@@ -31,33 +31,46 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - Commands preserve graph presence or absence unless their purpose is to change graph policy.
 - `select` and `construct` operate on the graphs present in their stdin dataset.
 - `construct` remains in dataset space: it emits RDF statements, which may be graphless, named, or mixed.
+- `graph-assign <iri>` assigns a named graph to graphless statements and preserves existing named graphs.
+- `graph-drop` removes graph terms while staying in dataset space.
 - `serialize` preserves the input dataset semantics in the requested serialization, subject to the target format's ability to encode graphs.
-- `pretty --format turtle` requires graphless input for faithful Turtle output; use `to-triples` first when dropping graphs is intended.
+- `pretty --format turtle` requires graphless input for faithful Turtle output.
 - `pretty --format trig` preserves named graphs and may serialize graphless statements as default-graph content.
 
 ## Input semantics by command
 
-### `to-quads`
+### `glob`
 
-- With one or more path or glob arguments: reads matching files, parses each independently, and emits one combined dataset stream encoded as N-Quads.
-- With no path arguments: reads RDF from stdin.
+- Reads one or more glob patterns from command arguments.
+- Writes a path stream on stdout using one path per line.
+- `glob` is not an RDF command; it is a path source.
+
+### `from-paths`
+
+- Reads a path stream from stdin using one path per line.
+- Parses each path independently and emits one combined dataset stream encoded as N-Quads.
+- By default, graphless statements remain graphless.
+- `--graph-from path` assigns a file-derived graph only to graphless statements from that file.
+
+### `from-stdin`
+
+- Reads RDF bytes from stdin.
 - Stdin format is auto-detected when possible, or can be forced with `--format`.
-- When reading from stdin, `to-quads` preserves graphless statements as graphless.
-- When reading from file paths, source-derived graph assignment is command policy, not a general dataset invariant.
-
-### `to-triples`
-
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- `--format` may override the stdin parser format.
-- Writes N-Triples with all graph information removed.
-- Semantically, this is an explicit graph-dropping step.
+- Emits a dataset stream encoded as N-Quads.
+- Graphless statements remain graphless.
 
 ### `select`
 
 - Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
 - `--format` may override the stdin parser format.
 - Executes the supplied SPARQL SELECT query against the full dataset.
-- Writes bindings-oriented tabular results, not RDF.
+- Writes a bindings stream as JSON Lines.
+
+### `table`
+
+- Reads a bindings stream from stdin in JSON Lines form.
+- Renders it as CSV, TSV, or JSON Lines.
+- `table` is a sink from bindings space to text space.
 
 ### `construct`
 
@@ -66,6 +79,18 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - Executes the supplied SPARQL CONSTRUCT query against the full dataset.
 - Writes the constructed dataset on stdout using N-Quads as the default encoding.
 - The constructed output may contain graphless statements, named graphs, or both.
+
+### `graph-assign`
+
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
+- Requires one graph IRI argument.
+- Rewrites graphless statements into that named graph and preserves existing named graphs.
+
+### `graph-drop`
+
+- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
+- Removes graph terms from all statements.
+- Writes a dataset stream encoded as N-Quads.
 
 ### `serialize`
 
@@ -81,10 +106,3 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - `--format turtle` produces pretty Turtle for graphless datasets.
 - `--format trig` produces pretty TriG and preserves named graphs.
 - `pretty` is a sink: it renders the dataset stream for humans rather than preserving a machine-oriented RDF pipe format.
-
-### `diff`
-
-- Reads two RDF inputs from file arguments.
-- Each side is parsed as a dataset.
-- Comparison is triple-level: graph names are ignored when computing additions and removals.
-- Output is N-Quads with added triples in graph `<urn:added>` and removed triples in graph `<urn:removed>`.

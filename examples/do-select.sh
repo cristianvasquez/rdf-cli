@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# SPARQL SELECT → CSV. Triples live in named graphs, so use GRAPH ?g.
-# Pipe through to-triples first if you want to query without GRAPH patterns.
+# SPARQL SELECT emits a bindings stream; table renders it as CSV.
 
-rdf to-quads 'examples/data/*' \
-  | rdf select 'SELECT ?name WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?name } }'
+rdf glob 'examples/data/*' \
+  | rdf from-paths \
+  | rdf select 'SELECT ?name WHERE { ?s <http://xmlns.com/foaf/0.1/name> ?name }' \
+  | rdf table

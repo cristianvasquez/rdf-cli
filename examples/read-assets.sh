@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Parse RDF files → N-Quads. Each file becomes a named graph.
+# Expand paths, then parse RDF files into a graphless dataset stream.
 
-rdf to-quads \
-  examples/data/alice-knows-bob.rdf \
-  examples/data/bob-likes-alice.ttl
+rdf glob 'examples/data/*.rdf' 'examples/data/*.ttl' \
+  | rdf from-paths

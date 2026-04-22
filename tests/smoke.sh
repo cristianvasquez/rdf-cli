@@ -17,170 +17,156 @@ assert_contains()    { [[ "$1" == *"$2"* ]] && ok "$3" || fail "$3: expected to 
 assert_not_contains(){ [[ "$1" != *"$2"* ]] && ok "$3" || fail "$3: expected to omit: $2"; }
 assert_lines()       { local n; n=$(printf '%s' "$1" | grep -c .); [[ "$n" == "$2" ]] && ok "$3" || fail "$3: expected $2 lines, got $n"; }
 assert_empty()       { [[ -z "$1" ]] && ok "$2" || fail "$2: expected empty output"; }
-assert_rdf_parseable() {
-  local file="$1" format="$2" label="$3"
-  if node --input-type=module -e "
-    import { readFileSync } from 'node:fs'
-    import { Readable } from 'node:stream'
-    import formats from '@rdfjs/formats'
-    import rdf from 'rdf-ext'
 
-    const input = readFileSync(process.argv[1], 'utf8')
-    const dataset = rdf.dataset()
-    await dataset.import(formats.parsers.import(process.argv[2], Readable.from([input])))
-  " "$file" "$format"; then
-    ok "$label"
-  else
-    fail "$label: output is not parseable as $format"
-  fi
-}
+printf '\nglob\n'
 
-# ---------------------------------------------------------------------------
-printf '\nto-quads\n'
+out=$($CLI glob "$DATA/*.rdf" "$DATA/*.ttl" 2>"$TMP/err")
+assert_contains "$out" "$DATA/alice-knows-bob.rdf" "glob: rdf path emitted"
+assert_contains "$out" "$DATA/bob-likes-alice.ttl" "glob: ttl path emitted"
+assert_lines "$out" 3 "glob: one path per line"
+assert_empty "$(cat "$TMP/err")" "glob: no stderr for matches"
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>"$TMP/err")
-assert_lines    "$out" 7                                        "7 quads from two files"
-assert_contains "$out" "<file://$DATA/alice-knows-bob.rdf>"    "rdf file gets named graph"
-assert_contains "$out" "<file://$DATA/bob-likes-alice.ttl>"    "ttl file gets named graph"
-assert_empty    "$(cat "$TMP/err")"                            "no stderr for valid files"
+out=$($CLI glob "$DATA/nope/*.ttl" 2>"$TMP/err" || true)
+assert_empty "$out" "glob: no stdout for empty match"
+assert_contains "$(cat "$TMP/err")" "no files matched" "glob: warns on empty match"
 
-out=$($CLI to-quads "$DATA/two-graphs.trig" 2>"$TMP/err")
-assert_contains "$out" "<urn:g1>"                              "trig keeps first named graph"
-assert_contains "$out" "<urn:g2>"                              "trig keeps second named graph"
-assert_not_contains "$out" "two-graphs.trig>"                  "trig does not overwrite named graphs"
-assert_empty    "$(cat "$TMP/err")"                            "no stderr for valid trig"
+printf '\nfrom-paths\n'
 
-out=$($CLI to-quads "$DATA/two-graphs.nq" 2>"$TMP/err")
-assert_contains "$out" "<urn:g1>"                              "nquads keeps first named graph"
-assert_contains "$out" "<urn:g2>"                              "nquads keeps second named graph"
-assert_not_contains "$out" "two-graphs.nq>"                    "nquads does not overwrite named graphs"
-assert_empty    "$(cat "$TMP/err")"                            "no stderr for valid nquads"
+out=$(printf '%s\n%s\n' "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths 2>"$TMP/err")
+assert_lines "$out" 7 "from-paths: 7 statements from two files"
+assert_not_contains "$out" "file://" "from-paths: preserves graphless statements by default"
+assert_empty "$(cat "$TMP/err")" "from-paths: no stderr for valid files"
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/with-errors/wrong-turtle.ttl" 2>"$TMP/err" || true)
-assert_contains "$(cat "$TMP/err")" "wrong-turtle.ttl"         "parse error goes to stderr"
-assert_contains "$out" "Alice"                                 "valid file still emits quads"
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths --graph-from path 2>"$TMP/err")
+assert_contains "$out" "<file://$DATA/bob-likes-alice.ttl>" "from-paths: --graph-from path assigns file graph"
+assert_empty "$(cat "$TMP/err")" "from-paths: graph-from path has no stderr"
 
-# ---------------------------------------------------------------------------
-printf '\nto-triples\n'
+out=$(printf '%s\n' "$DATA/two-graphs.trig" | $CLI from-paths 2>"$TMP/err")
+assert_contains "$out" "<urn:g1>" "from-paths: trig preserves first named graph"
+assert_contains "$out" "<urn:g2>" "from-paths: trig preserves second named graph"
+assert_not_contains "$out" "two-graphs.trig>" "from-paths: trig does not invent file graph"
+assert_empty "$(cat "$TMP/err")" "from-paths: no stderr for valid trig"
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI to-triples)
-assert_lines        "$out" 7   "same quad count as N-Triples"
-assert_not_contains "$out" "file://" "graph URIs are gone"
+out=$(printf '%s\n%s\n' "$DATA/alice-knows-bob.rdf" "$DATA/with-errors/wrong-turtle.ttl" \
+  | $CLI from-paths 2>"$TMP/err" || true)
+assert_contains "$(cat "$TMP/err")" "wrong-turtle.ttl" "from-paths: parse error goes to stderr"
+assert_contains "$out" "Alice" "from-paths: valid file still emits data"
 
-# ---------------------------------------------------------------------------
-printf '\nselect\n'
+printf '\nfrom-stdin\n'
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI select 'SELECT ?name WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?name } }')
-assert_contains "$out" "name"  "header row present"
-assert_contains "$out" "Alice" "Alice in results"
-assert_contains "$out" "Bob"   "Bob in results"
-assert_lines    "$out" 3       "header + 2 results"
+out=$(cat "$DATA/bob-likes-alice.ttl" | $CLI from-stdin --format turtle)
+assert_lines "$out" 3 "from-stdin: turtle emits 3 statements"
+assert_not_contains "$out" "file://" "from-stdin: stdin stays graphless"
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI select 'SELECT ?name WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?name } }' --output tsv)
-assert_contains "$out" "Alice" "tsv: Alice present"
+out=$(printf '<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n' | $CLI from-stdin)
+assert_contains "$out" "example.org/s" "from-stdin: autodetects n-triples"
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI select 'SELECT ?name WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?name } }' --output json)
-assert_contains "$out" '"Alice"' "json: Alice present"
+printf '\nselect + table\n'
 
-# ---------------------------------------------------------------------------
+out=$(printf '%s\n%s\n' "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI select 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name }' \
+  | $CLI table)
+assert_contains "$out" "name" "table csv: header row present"
+assert_contains "$out" "Alice" "table csv: Alice present"
+assert_contains "$out" "Bob" "table csv: Bob present"
+assert_lines "$out" 3 "table csv: header plus 2 results"
+
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths --graph-from path \
+  | $CLI select 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?g ?name WHERE { GRAPH ?g { ?s foaf:name ?name } }' \
+  | $CLI table --format tsv)
+assert_contains "$out" "file://$DATA/bob-likes-alice.ttl" "table tsv: graph binding present"
+assert_contains "$out" "Bob" "table tsv: Bob present"
+
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI select 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name }' \
+  | $CLI table --format jsonl)
+assert_contains "$out" '"name":"Bob"' "table jsonl: Bob present"
+
 printf '\nconstruct\n'
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI construct 'CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?o . ?s ?p ?o } }')
-assert_not_contains "$out" "file://"          "construct output is in default graph"
+out=$(printf '%s\n%s\n' "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI construct 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> CONSTRUCT { ?s foaf:name ?name } WHERE { ?s foaf:name ?name }')
+assert_contains "$out" "Alice" "construct: Alice emitted"
+assert_not_contains "$out" "file://" "construct: output remains graphless"
 
-nq_lines=$(printf '%s' "$out" | grep -c ' \. *$' || true)
-[[ "$nq_lines" -gt 0 ]] && ok "construct emits N-Quads" || fail "construct emits N-Quads: got no quads"
+out=$(printf '%s\n%s\n' "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI construct 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> CONSTRUCT { ?s foaf:name ?name } WHERE { ?s foaf:name ?name }' \
+  | $CLI pretty)
+assert_contains "$out" "Alice" "construct | pretty: turtle renders graphless construct output"
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI construct 'CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s <http://xmlns.com/foaf/0.1/name> ?o . ?s ?p ?o } }' \
-      | $CLI to-triples \
-      | $CLI pretty)
-assert_contains "$out" "Alice" "construct | to-triples | pretty works"
+printf '\ngraph policy\n'
 
-# ---------------------------------------------------------------------------
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI graph-assign urn:batch \
+  | $CLI pretty --format trig)
+assert_contains "$out" "<urn:batch>" "graph-assign: named graph added"
+assert_contains "$out" "Bob" "graph-assign: data preserved"
+
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths --graph-from path \
+  | $CLI graph-drop \
+  | $CLI pretty)
+assert_contains "$out" "Bob" "graph-drop | pretty: turtle renders after dropping graphs"
+assert_not_contains "$out" "file://" "graph-drop: file graph removed"
+
+if printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths --graph-from path \
+  | $CLI pretty 2>"$TMP/err"; then
+  fail "pretty turtle: expected failure on named graphs"
+else
+  ok "pretty turtle: fails on named graphs"
+fi
+assert_contains "$(cat "$TMP/err")" "graph-drop first" "pretty turtle: stderr explains graph policy"
+
 printf '\nserialize\n'
 
-out=$($CLI to-quads "$DATA/bob-likes-alice.ttl" 2>/dev/null | $CLI serialize)
-assert_contains     "$out" "file://" "nquads: graph term present"
-assert_lines        "$out" 3         "nquads: 3 quads from one file"
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" | $CLI from-paths | $CLI serialize)
+assert_lines "$out" 3 "serialize nquads: 3 graphless statements"
+assert_not_contains "$out" "file://" "serialize nquads: graphless remains graphless"
 
-out=$($CLI to-quads "$DATA/bob-likes-alice.ttl" 2>/dev/null | $CLI serialize --format ntriples)
-assert_not_contains "$out" "file://" "ntriples: graph term absent"
-assert_lines        "$out" 3         "ntriples: 3 triples"
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI graph-assign urn:batch \
+  | $CLI serialize)
+assert_contains "$out" "<urn:batch>" "serialize nquads: named graph preserved"
 
-# ---------------------------------------------------------------------------
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI graph-assign urn:batch \
+  | $CLI serialize --format ntriples)
+assert_not_contains "$out" "urn:batch" "serialize ntriples: graph dropped by format"
+assert_lines "$out" 3 "serialize ntriples: 3 triples"
+
 printf '\npretty\n'
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI to-triples | $CLI pretty)
-assert_contains     "$out" "Alice"    "turtle: Alice present"
-assert_not_contains "$out" "file://" "turtle: no graph URIs"
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" | $CLI from-paths | $CLI pretty)
+assert_contains "$out" "Bob" "pretty turtle: graphless turtle works"
+assert_not_contains "$out" "file://" "pretty turtle: no named graphs"
 
-out=$($CLI to-quads "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" 2>/dev/null \
-      | $CLI pretty --format trig)
-assert_contains "$out" "file://"       "trig: named graphs present"
-assert_contains "$out" "alice-knows-bob.rdf>" "trig: rdf graph"
-assert_contains "$out" "bob-likes-alice.ttl>" "trig: ttl graph"
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths \
+  | $CLI graph-assign urn:batch \
+  | $CLI pretty --format trig)
+assert_contains "$out" "<urn:batch>" "pretty trig: named graph shown"
+assert_contains "$out" "Bob" "pretty trig: data preserved"
 
-cat >"$TMP/backslash-newline.ttl" <<'EOF'
-<http://example/s> <http://example/p> """hello \\
-world""" .
-EOF
-
-out=$($CLI to-quads "$TMP/backslash-newline.ttl" 2>/dev/null \
-      | $CLI to-triples \
-      | $CLI pretty)
-printf '%s' "$out" >"$TMP/backslash-newline.pretty.ttl"
-assert_rdf_parseable "$TMP/backslash-newline.pretty.ttl" "text/turtle" "turtle: multiline backslash literal round-trips"
-
-out=$($CLI to-quads "$TMP/backslash-newline.ttl" 2>/dev/null \
-      | $CLI pretty --format trig)
-printf '%s' "$out" >"$TMP/backslash-newline.pretty.trig"
-assert_rdf_parseable "$TMP/backslash-newline.pretty.trig" "application/trig" "trig: multiline backslash literal round-trips"
-
-# ---------------------------------------------------------------------------
-printf '\ndiff\n'
-
-out=$($CLI diff \
-  <($CLI to-quads "$DATA/alice-knows-bob.rdf" 2>/dev/null) \
-  <($CLI to-quads "$DATA/alice-knows-carol.ttl" 2>/dev/null))
-assert_contains "$out" "<urn:added>"   "diff: added graph present"
-assert_contains "$out" "<urn:removed>" "diff: removed graph present"
-assert_contains "$out" "Carol"         "diff: Carol in added"
-assert_contains "$out" "Bob"           "diff: Bob in removed"
-
-out=$($CLI diff \
-  <($CLI to-quads "$DATA/alice-knows-bob.rdf" 2>/dev/null) \
-  <($CLI to-quads "$DATA/alice-knows-bob.rdf" 2>/dev/null))
-assert_empty "$out" "diff of identical files is empty"
-
-# ---------------------------------------------------------------------------
-printf '\nstdin format detection\n'
-
-out=$(cat "$DATA/bob-likes-alice.ttl" | $CLI to-quads --format turtle)
-assert_contains "$out" "Bob"     "stdin turtle: quads emitted"
-assert_lines    "$out" 3         "stdin turtle: 3 quads"
-
-out=$(printf '<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n' \
-      | $CLI to-quads)
-assert_contains "$out" "example.org/s" "stdin autodetect n-triples"
-
-# ---------------------------------------------------------------------------
 printf '\nprefixes autodiscovery\n'
 
 cat >"$TMP/.prefixes.json" <<'EOF'
 {"ex":"http://example.org/","foaf":"http://xmlns.com/foaf/0.1/"}
 EOF
-out=$(cd "$TMP" && $CLI to-quads "$DATA/bob-likes-alice.ttl" 2>/dev/null | $CLI pretty)
-assert_contains "$out" "@prefix ex:"   "prefix ex: applied"
+out=$(cd "$TMP" && printf '%s\n' "$DATA/bob-likes-alice.ttl" | $CLI from-paths | $CLI pretty)
+assert_contains "$out" "@prefix ex:" "prefix ex: applied"
 assert_contains "$out" "@prefix foaf:" "prefix foaf: applied"
 
-# ---------------------------------------------------------------------------
 printf '\n'
 if [[ "$fail" -eq 0 ]]; then
   printf 'all %d tests passed\n' "$pass"

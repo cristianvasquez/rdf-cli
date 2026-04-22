@@ -4,7 +4,7 @@ import { readStdin, resolveFormat, writeDatasetAsNQ } from '../io.js'
 import { datasetToStore, storeConstruct } from '../store.js'
 
 export default defineCommand({
-  meta: { name: 'construct', description: 'SPARQL CONSTRUCT on N-Quads stdin → N-Quads stdout' },
+  meta: { name: 'construct', description: 'SPARQL CONSTRUCT on dataset stream stdin → dataset stream stdout' },
   args: {
     query: { type: 'positional', description: 'SPARQL CONSTRUCT query string' },
     'query-file': { type: 'string', description: 'Read SPARQL query from file instead' },

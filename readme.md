@@ -7,7 +7,7 @@ layout: node.js
 
 # [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-assets)
 
-A CLI-only toolkit to process RDF files with pipes.
+A CLI-only toolkit for RDF stream algebra.
 
 ## Install
 
@@ -15,120 +15,126 @@ A CLI-only toolkit to process RDF files with pipes.
 pnpm install && pnpm link --global
 ```
 
-## How it works
+The executable is `rdf`.
 
-Commands talk to each other via N-Quads on stdout. Each file becomes a named graph (its `file://` URI). That graph info travels through the pipe and you can drop it with `to-triples` when you don't need it.
+## Stream kinds
 
-```
-to-quads → [N-Quads stream] → to-triples / select / construct / serialize / pretty / diff
-```
+- `glob` produces a path stream
+- `from-paths` and `from-stdin` produce a dataset stream
+- `select` produces a bindings stream
+- `table` and `pretty` are sinks to text
+
+By default, graphless statements remain graphless. Graph assignment is explicit.
 
 ## Commands
 
-### `to-quads <glob...>`
+### `glob <pattern...>`
 
-Parse RDF files into N-Quads. Each file gets its own named graph.
-
-```bash
-rdf to-quads './data/**/*.ttl' './data/**/*.rdf'
-```
-
-Also reads from stdin if no glob is given (format auto-detected, or use `--format`):
+Expand one or more globs and write one path per line.
 
 ```bash
-curl https://example.org/data.ttl | rdf to-quads --format turtle
+rdf glob './data/**/*.ttl' './data/**/*.rdf'
 ```
 
-### `to-triples`
+### `from-paths`
 
-Drop the graph axis. Use this before `pretty --format turtle`.
+Read one path per line from stdin and parse RDF files into a dataset stream.
 
 ```bash
-rdf to-quads ./**/*.ttl | rdf to-triples
+rdf glob './data/**/*.ttl' './data/**/*.rdf' | rdf from-paths
 ```
 
-### `pretty`
-
-Pretty-print as Turtle (default) or TriG.
+Assign file identity explicitly when wanted:
 
 ```bash
-rdf to-quads ./**/*.ttl | rdf to-triples | rdf pretty
-rdf to-quads ./**/*.ttl | rdf pretty --format trig
+rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path
 ```
 
-Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--prefixes <file>`.
+### `from-stdin`
 
-```json
-{ "foaf": "http://xmlns.com/foaf/0.1/", "ex": "http://example.org/" }
+Parse RDF bytes from stdin into a dataset stream.
+
+```bash
+curl https://example.org/data.ttl | rdf from-stdin --format turtle
 ```
 
 ### `select <query>`
 
-SPARQL SELECT → CSV (default), TSV, or JSON lines.
+Run a SPARQL `SELECT` over a dataset stream and emit a bindings stream as JSON Lines.
 
 ```bash
-rdf to-quads ./**/*.ttl | rdf select "SELECT ?s ?name WHERE { GRAPH ?g { ?s foaf:name ?name } }"
-rdf to-quads ./**/*.ttl | rdf select "SELECT ..." --output tsv
-rdf to-quads ./**/*.ttl | rdf select --query-file query.sparql --output json
+rdf glob './data/**/*.ttl' \
+  | rdf from-paths \
+  | rdf select 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }'
 ```
 
-Note: triples live in named graphs, so queries need `GRAPH ?g { }` unless you pipe through `to-triples` first.
+### `table`
+
+Render a bindings stream as CSV, TSV, or JSON Lines.
+
+```bash
+rdf glob './data/**/*.ttl' \
+  | rdf from-paths \
+  | rdf select 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }' \
+  | rdf table
+```
 
 ### `construct <query>`
 
-SPARQL CONSTRUCT → N-Quads (stays in the pipe).
+Run a SPARQL `CONSTRUCT` over a dataset stream and stay in dataset space.
 
 ```bash
-rdf to-quads ./**/*.ttl | rdf construct "CONSTRUCT { ?s ?p ?o } WHERE { GRAPH ?g { ?s a foaf:Person . ?s ?p ?o } }" | rdf pretty
+rdf glob './data/**/*.ttl' \
+  | rdf from-paths \
+  | rdf construct 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' \
+  | rdf pretty
+```
+
+### `graph-assign <iri>`
+
+Assign a named graph to graphless statements.
+
+```bash
+rdf glob './data/**/*.ttl' \
+  | rdf from-paths \
+  | rdf graph-assign urn:batch \
+  | rdf pretty --format trig
+```
+
+### `graph-drop`
+
+Drop graph terms while staying in dataset space.
+
+```bash
+rdf glob './data/**/*.ttl' \
+  | rdf from-paths --graph-from path \
+  | rdf graph-drop \
+  | rdf pretty
 ```
 
 ### `serialize`
 
-Compact N-Quads (default, preserves graphs) or N-Triples.
+Serialize a dataset stream as N-Quads or N-Triples.
 
 ```bash
-rdf to-quads ./**/*.ttl | rdf serialize > bundle.nq
-rdf to-quads ./**/*.ttl | rdf serialize --format ntriples > bundle.nt
+rdf glob './data/**/*.ttl' | rdf from-paths | rdf serialize > bundle.nq
+rdf glob './data/**/*.ttl' | rdf from-paths | rdf serialize --format ntriples > bundle.nt
 ```
 
-### `diff <old> <new>`
+### `pretty`
 
-Compare two N-Quads files. Emits a single N-Quads stream with added triples in `<urn:added>` and removed in `<urn:removed>`.
+Pretty-print a dataset stream as Turtle or TriG.
 
 ```bash
-rdf diff <(rdf to-quads old/*.ttl) <(rdf to-quads new/*.ttl) | rdf pretty --format trig
+rdf glob './data/**/*.ttl' | rdf from-paths | rdf pretty
+rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path | rdf pretty --format trig
 ```
 
-```trig
-<urn:added> {
-  <http://example.org/Alice> <http://xmlns.com/foaf/0.1/knows> <http://example.org/Carol> .
-}
-<urn:removed> {
-  <http://example.org/Alice> <http://xmlns.com/foaf/0.1/knows> <http://example.org/Bob> .
-}
-```
+`pretty --format turtle` requires graphless input. Use `graph-drop` first when dropping graphs is intentional.
 
-Diff is triple-level (graph info stripped before comparison).
-
-## Pipelines
-
-```bash
-# bundle everything into one trig file
-rdf to-quads ./**/*.ttl | rdf serialize > bundle.nq
-
-# pretty-print flat turtle from multiple files
-rdf to-quads ./**/*.ttl | rdf to-triples | rdf pretty
-
-# query and get CSV
-rdf to-quads ./**/*.ttl | rdf select "SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }" > results.csv
-
-# construct then pretty
-rdf to-quads ./**/*.ttl | rdf construct --query-file build.sparql | rdf pretty --format trig
-```
+Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--prefixes <file>`.
 
 ## Examples
-
-The `examples/` directory now contains shell scripts that exercise the CLI directly:
 
 ```bash
 bash examples/read-assets.sh

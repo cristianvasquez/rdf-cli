@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# SPARQL CONSTRUCT stays in the pipe as N-Quads.
-# Drop graphs with to-triples before pretty-printing as Turtle.
+# SPARQL CONSTRUCT stays in dataset space, so pretty Turtle works directly.
 
 QUERY='PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 CONSTRUCT { ?s foaf:name ?name }
-WHERE { GRAPH ?g { ?s foaf:name ?name } }'
+WHERE { ?s foaf:name ?name }'
 
-rdf to-quads 'examples/data/*' \
+rdf glob 'examples/data/*' \
+  | rdf from-paths \
   | rdf construct "$QUERY" \
-  | rdf to-triples \
   | rdf pretty

@@ -9,31 +9,6 @@ function termValue(term) {
   return term.value
 }
 
-function csvEscape(value) {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`
-  }
-  return value
-}
-
-function toCSV(rows) {
-  if (rows.length === 0) return ''
-  const headers = Object.keys(rows[0])
-  return [
-    headers.join(','),
-    ...rows.map(row => headers.map(header => csvEscape(termValue(row[header]))).join(',')),
-  ].join('\n') + '\n'
-}
-
-function toTSV(rows) {
-  if (rows.length === 0) return ''
-  const headers = Object.keys(rows[0])
-  return [
-    headers.join('\t'),
-    ...rows.map(row => headers.map(header => termValue(row[header]).replace(/\t/g, ' ')).join('\t')),
-  ].join('\n') + '\n'
-}
-
 function toJSONL(rows) {
   return rows
     .map(row => JSON.stringify(Object.fromEntries(Object.entries(row).map(([key, value]) => [key, termValue(value)]))))
@@ -41,10 +16,9 @@ function toJSONL(rows) {
 }
 
 export default defineCommand({
-  meta: { name: 'select', description: 'SPARQL SELECT on N-Quads stdin → CSV/TSV/JSON' },
+  meta: { name: 'select', description: 'SPARQL SELECT on dataset stream stdin → bindings stream (JSON Lines)' },
   args: {
     query: { type: 'positional', description: 'SPARQL SELECT query string' },
-    output: { type: 'string', alias: 'o', description: 'Output format: csv, tsv, json (default: csv)', default: 'csv' },
     'query-file': { type: 'string', description: 'Read SPARQL query from file instead' },
     format: { type: 'string', alias: 'f', description: 'Input format (default: n-quads)' },
   },
@@ -59,10 +33,6 @@ export default defineCommand({
       datasetToStore(await readStdin(resolveFormat(args.format) || 'application/n-quads')),
       query,
     )
-    const output = (args.output || 'csv').toLowerCase()
-
-    if (output === 'tsv') process.stdout.write(toTSV(rows))
-    else if (output === 'json') process.stdout.write(toJSONL(rows))
-    else process.stdout.write(toCSV(rows))
+    process.stdout.write(toJSONL(rows))
   },
 })

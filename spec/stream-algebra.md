@@ -240,37 +240,20 @@ Some sinks require stronger preconditions than transforms.
 - TriG can encode datasets with named graphs.
 - If the dataset includes graphless statements, the sink should preserve them as default-graph statements rather than invent a named graph.
 
-## Design consequences for current commands
+## Implemented command mapping
 
-These consequences follow from the algebra even if the current CLI keeps convenience commands.
+The current CLI surface follows the algebra with these primitive commands:
 
-### `to-quads`
-
-- Today it combines:
-  - path expansion
-  - RDF parsing
-  - graph assignment from file identity
-- Those are separable concerns.
-
-It can remain as convenience syntax, but the underlying algebra should treat them as distinct steps.
-
-### `to-triples`
-
-- This is better understood as `graph drop`.
-- The current name is convenient, but the semantic role is graph policy.
-
-### `select`
-
-- This should be documented as dataset -> bindings, not as a generic RDF transform.
-
-### `pretty`
-
-- This is a sink, not a general transform.
-
-### `diff`
-
-- Its current two-argument form is less composable than unary stream transforms.
-- A future design should consider a more stream-shaped comparison primitive.
+- `glob`
+- `from-paths`
+- `from-stdin`
+- `select`
+- `table`
+- `construct`
+- `graph-assign`
+- `graph-drop`
+- `pretty`
+- `serialize`
 
 ## Minimal laws
 
