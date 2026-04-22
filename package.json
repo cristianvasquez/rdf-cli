@@ -1,6 +1,6 @@
 {
   "name": "rdf-cli",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "CLI-only RDF stream processing toolkit",
   "type": "module",
   "bin": {

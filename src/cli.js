@@ -14,7 +14,7 @@ import graphDrop from './commands/graph-drop.js'
 const main = defineCommand({
   meta: {
     name: 'rdf',
-    version: '0.2.1',
+    version: '0.2.2',
     description: 'RDF stream algebra CLI',
   },
   subCommands: {
