@@ -7,7 +7,7 @@ layout: node.js
 
 # [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-assets)
 
-A CLI-only toolkit for RDF stream algebra.
+A CLI-only toolkit to manipulate RDF.
 
 ## Install
 
