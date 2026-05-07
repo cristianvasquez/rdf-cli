@@ -1,5 +1,8 @@
 ---
+uuid: ecf2782d-2017-49d7-8b40-a86ee9a14a7e
 repo-group: rdf
+tldr: proposes a small stream algebra for `rdf` and related tools such as `rdf-shacl`.
+tags: [spec/rdf]
 ---
 
 # rdf stream algebra

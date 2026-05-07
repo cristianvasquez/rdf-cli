@@ -10,10 +10,14 @@
     "bin/**/*.js",
     "src/**/*.js",
     "resources/**/*.ttl",
-    "README.md",
+    "readme.md",
     "LICENSE"
   ],
   "scripts": {
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "check:write": "biome check --write .",
     "test": "node tests/pretty.test.js && bash tests/smoke.sh",
     "test:js": "node tests/pretty.test.js",
     "smoke": "bash tests/smoke.sh"
@@ -38,5 +42,8 @@
     "oxigraph": "^0.5.6",
     "rdf-ext": "^2.5.1",
     "shacl-engine": "^1.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12"
   }
 }

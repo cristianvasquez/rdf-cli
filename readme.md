@@ -3,8 +3,10 @@ uuid: 7e28b748-491f-450a-a0d5-afb7f784df2b
 repo-uri: osg://repo/github.com/cristianvasquez/rdf-cli
 repo-name: rdf-cli
 layout: node.js
+tags:
+  - repo/rdf
+repo-group: rdf
 ---
-
 # [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-cli)
 
 A CLI-only toolkit to manipulate RDF.
@@ -12,7 +14,7 @@ A CLI-only toolkit to manipulate RDF.
 ## Install
 
 ```bash
-pnpm install && pnpm link --global
+npm install && npm link
 ```
 
 The executable is `rdf`.
@@ -166,3 +168,11 @@ bash examples/trig-bundle.sh
 ## Dependencies
 
 [RDF JavaScript Libraries](https://rdf.js.org/) and [Oxigraph](https://github.com/oxigraph/oxigraph) as in-memory triplestore.
+
+## TODO
+
+- Clarify the contract between "dataset stream" as an abstract stream kind and what actually flows through a Unix pipe. Agents need the docs to say explicitly when stdin/stdout carry serialized RDF bytes such as N-Quads versus an internal conceptual stream.
+- Document the canonical accepted values for `--format` and `--input-format`, plus aliases and MIME types. The current docs make tokens like `nquads` versus `n-quads` too easy to guess wrong.
+- Make command help and examples consistent about whether a flag controls input parsing or output serialization. Several commands use `--format` for different roles, which is easy for agents to misread.
+- Add one end-to-end example that starts with N-Quads on stdin and ends with `rdf pretty --format trig`, with the exact working flags shown.
+- Add an "agent readability" pass to the CLI docs: each command should state expected stdin kind, stdout kind, default wire format, accepted format aliases, and one minimal copy-pastable example.
