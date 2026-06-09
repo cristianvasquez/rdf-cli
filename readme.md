@@ -22,7 +22,7 @@ The executable is `rdf`.
 ## Stream kinds
 
 - `glob` produces a path stream
-- `from-paths` and `from-stdin` produce a dataset stream
+- `read`, `from-paths`, and `from-stdin` produce a dataset stream
 - `select` produces a bindings stream
 - `validate` keeps you in dataset space by appending a SHACL report graph
 - `table` and `pretty` are sinks to text
@@ -37,6 +37,21 @@ Expand one or more globs and write one path per line.
 
 ```bash
 rdf glob './data/**/*.ttl' './data/**/*.rdf'
+```
+
+### `read <path...>`
+
+Parse one or more RDF files given as arguments into a dataset stream. This is the direct shortcut for the common `glob | from-paths` pipeline when you already know the paths.
+
+```bash
+rdf read ./data/alice.ttl ./data/bob.ttl
+```
+
+Force an input format or assign file identity explicitly:
+
+```bash
+rdf read --format turtle ./data/alice.ttl
+rdf read --graph-from path ./data/*.ttl | rdf pretty --format trig
 ```
 
 ### `from-paths`

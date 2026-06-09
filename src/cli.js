@@ -6,6 +6,7 @@ import glob from "./commands/glob.js";
 import graphAssign from "./commands/graph-assign.js";
 import graphDrop from "./commands/graph-drop.js";
 import pretty from "./commands/pretty.js";
+import read from "./commands/read.js";
 import select from "./commands/select.js";
 import serialize from "./commands/serialize.js";
 import table from "./commands/table.js";
@@ -20,6 +21,7 @@ const main = defineCommand({
   },
   subCommands: {
     glob,
+    read,
     "from-paths": fromPaths,
     "from-stdin": fromStdin,
     select,
