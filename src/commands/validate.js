@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { readStdin, writeDatasetAsNQ } from "../io.js";
+import { NQUADS, readStdin, writeQuads } from "../io.js";
 import { formatMarkdownReport, summarizeReport } from "../report.js";
 import {
   loadShapesDataset,
@@ -62,13 +62,13 @@ export default defineCommand({
 
     const graphURI = args["report-graph"] ?? DEFAULT_GRAPH;
     const [dataDataset, shapesDataset] = await Promise.all([
-      readStdin("application/n-quads"),
+      readStdin(NQUADS),
       loadShapesDataset(shapeSources),
     ]);
 
     const report = await runValidation(dataDataset, shapesDataset);
-    writeDatasetAsNQ(dataDataset);
-    writeDatasetAsNQ(reportToNamedGraph(report, graphURI));
+    await writeQuads(dataDataset);
+    await writeQuads(reportToNamedGraph(report, graphURI));
 
     if (args["markdown-report"]) {
       const label = args.builtin
@@ -79,6 +79,6 @@ export default defineCommand({
       );
     }
 
-    if (!report.conforms) process.exit(1);
+    if (!report.conforms) process.exitCode = 1;
   },
 });

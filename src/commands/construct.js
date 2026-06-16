@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { defineCommand } from "citty";
-import { readStdin, resolveFormat, writeDatasetAsNQ } from "../io.js";
+import { NQUADS, readStdin, resolveFormat, writeQuads } from "../io.js";
 import { datasetToStore, storeConstruct } from "../store.js";
 
 export default defineCommand({
@@ -10,7 +10,7 @@ export default defineCommand({
       "SPARQL CONSTRUCT on dataset stream stdin → dataset stream stdout. " +
       "Output is always graphless (all triples go into the default graph). " +
       "GRAPH clauses in the CONSTRUCT template are not supported by the SPARQL engine — " +
-      'they cause a cryptic parse error ("expected one of \'.\', \':\'"). ' +
+      "they cause a cryptic parse error (\"expected one of '.', ':'\"). " +
       "To assign a named graph to the output, pipe through graph-assign.",
   },
   args: {
@@ -37,11 +37,9 @@ export default defineCommand({
       process.exit(1);
     }
 
-    writeDatasetAsNQ(
+    await writeQuads(
       storeConstruct(
-        datasetToStore(
-          await readStdin(resolveFormat(args.format) || "application/n-quads"),
-        ),
+        datasetToStore(await readStdin(resolveFormat(args.format) || NQUADS)),
         query,
       ),
     );

@@ -2,10 +2,14 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import formats from "@rdfjs/formats";
 import { getStreamAsBuffer } from "get-stream";
 import rdf from "rdf-ext";
+
+export const NQUADS = "application/n-quads";
+export const NTRIPLES = "application/n-triples";
 
 export const FORMAT_ALIASES = {
   turtle: "text/turtle",
@@ -101,53 +105,28 @@ export async function loadPrefixes(prefixFile) {
   return {};
 }
 
-function escapeLiteral(value) {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t");
+function quadMapper(map) {
+  return new Transform({
+    objectMode: true,
+    transform(quad, _encoding, callback) {
+      callback(null, map(quad));
+    },
+  });
 }
 
-export function termToNQ(term) {
-  switch (term.termType) {
-    case "NamedNode":
-      return `<${term.value}>`;
-    case "BlankNode":
-      return `_:${term.value}`;
-    case "Literal": {
-      let literal = `"${escapeLiteral(term.value)}"`;
-      if (term.language) literal += `@${term.language}`;
-      else if (
-        term.datatype &&
-        term.datatype.value !== "http://www.w3.org/2001/XMLSchema#string"
-      ) {
-        literal += `^^<${term.datatype.value}>`;
-      }
-      return literal;
-    }
-    default:
-      return `<${term.value}>`;
+// Serialize a quad source to stdout. `source` may be a quad stream, an
+// rdf-ext dataset, or any (async) iterable of quads; `map` optionally
+// rewrites each quad. Backpressure is handled by piping; stdout is left
+// open so a command can emit several quad sources in sequence.
+export async function writeQuads(source, { format = NQUADS, map } = {}) {
+  const input =
+    source instanceof Readable
+      ? source
+      : Readable.from(source, { objectMode: true });
+  const quads = map ? input.pipe(quadMapper(map)) : input;
+  const bytes = formats.serializers.import(format, quads);
+  for (const upstream of new Set([input, quads])) {
+    upstream.on("error", (error) => bytes.destroy(error));
   }
-}
-
-export function writeDatasetAsNQ(dataset) {
-  for (const quad of dataset) {
-    writeQuadAsNQ(quad);
-  }
-}
-
-export function writeQuadAsNQ(quad) {
-  const graph =
-    quad.graph.termType === "DefaultGraph" ? "" : ` ${termToNQ(quad.graph)}`;
-  process.stdout.write(
-    `${termToNQ(quad.subject)} ${termToNQ(quad.predicate)} ${termToNQ(quad.object)}${graph} .\n`,
-  );
-}
-
-export async function writeQuadStreamAsNQ(stream, mapQuad = (quad) => quad) {
-  for await (const quad of stream) {
-    writeQuadAsNQ(mapQuad(quad));
-  }
+  await pipeline(bytes, process.stdout, { end: false });
 }

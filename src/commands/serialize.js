@@ -1,13 +1,16 @@
 import { defineCommand } from "citty";
 import rdf from "rdf-ext";
 import {
+  NQUADS,
+  NTRIPLES,
   readQuadStreamFromStdin,
   readStdin,
   resolveFormat,
-  termToNQ,
-  writeDatasetAsNQ,
-  writeQuadStreamAsNQ,
+  writeQuads,
 } from "../io.js";
+
+const dropGraph = (quad) =>
+  rdf.quad(quad.subject, quad.predicate, quad.object, rdf.defaultGraph());
 
 export default defineCommand({
   meta: {
@@ -27,39 +30,21 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const inputFormat =
-      resolveFormat(args["input-format"]) || "application/n-quads";
-    const outputFormat = resolveFormat(args.format) || "application/n-quads";
+    const inputFormat = resolveFormat(args["input-format"]) || NQUADS;
+    const triples = resolveFormat(args.format) === NTRIPLES;
 
-    if (inputFormat === "application/n-quads") {
-      if (outputFormat === "application/n-triples") {
-        await writeQuadStreamAsNQ(
-          readQuadStreamFromStdin(inputFormat),
-          (quad) =>
-            rdf.quad(
-              quad.subject,
-              quad.predicate,
-              quad.object,
-              rdf.defaultGraph(),
-            ),
-        );
-        return;
-      }
+    // N-Quads input streams quad-by-quad; other formats must be buffered to a
+    // dataset before serializing.
+    const source =
+      inputFormat === NQUADS
+        ? readQuadStreamFromStdin(inputFormat)
+        : await readStdin(inputFormat);
 
-      await writeQuadStreamAsNQ(readQuadStreamFromStdin(inputFormat));
-      return;
-    }
-
-    const dataset = await readStdin(inputFormat);
-    if (outputFormat === "application/n-triples") {
-      for (const quad of dataset) {
-        process.stdout.write(
-          `${termToNQ(quad.subject)} ${termToNQ(quad.predicate)} ${termToNQ(quad.object)} .\n`,
-        );
-      }
-      return;
-    }
-
-    writeDatasetAsNQ(dataset);
+    // The N-Triples serializer still emits the graph term, so drop it here to
+    // keep the output graphless.
+    await writeQuads(source, {
+      format: triples ? NTRIPLES : NQUADS,
+      map: triples ? dropGraph : undefined,
+    });
   },
 });

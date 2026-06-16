@@ -1,17 +1,6 @@
 import { defineCommand } from "citty";
-import rdf from "rdf-ext";
-import { pathToFileGraph, streamFileQuads } from "../inputs.js";
-import { readLines, resolveFormat, writeQuadStreamAsNQ } from "../io.js";
-
-function assignDefaultGraph(graph) {
-  return (quad) =>
-    rdf.quad(
-      quad.subject,
-      quad.predicate,
-      quad.object,
-      quad.graph.termType === "DefaultGraph" ? graph : quad.graph,
-    );
-}
+import { quadsFromPaths } from "../inputs.js";
+import { readLines, resolveFormat, writeQuads } from "../io.js";
 
 export default defineCommand({
   meta: {
@@ -33,30 +22,28 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    let sawPath = false;
     const graphFrom = args["graph-from"];
     if (graphFrom && graphFrom !== "path") {
       process.stderr.write('error: --graph-from only supports "path"\n');
       process.exit(1);
     }
 
-    const forcedFormat = resolveFormat(args.format);
-    for await (const file of readLines(process.stdin)) {
-      sawPath = true;
-      try {
-        const stream = streamFileQuads(file, forcedFormat);
-        if (graphFrom === "path") {
-          await writeQuadStreamAsNQ(
-            stream,
-            assignDefaultGraph(pathToFileGraph(file)),
-          );
-        } else {
-          await writeQuadStreamAsNQ(stream);
-        }
-      } catch (error) {
-        process.stderr.write(`error: ${file}: ${error}\n`);
+    let sawPath = false;
+    async function* paths() {
+      for await (const file of readLines(process.stdin)) {
+        sawPath = true;
+        yield file;
       }
     }
+
+    await writeQuads(
+      quadsFromPaths(paths(), {
+        format: resolveFormat(args.format),
+        graphFrom,
+        onError: (file, error) =>
+          process.stderr.write(`error: ${file}: ${error}\n`),
+      }),
+    );
 
     if (!sawPath) {
       process.stderr.write("error: expected one path per line on stdin\n");

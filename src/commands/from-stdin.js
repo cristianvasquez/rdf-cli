@@ -3,14 +3,13 @@ import {
   readQuadStreamFromStdin,
   readStdin,
   resolveFormat,
-  writeDatasetAsNQ,
-  writeQuadStreamAsNQ,
+  writeQuads,
 } from "../io.js";
 
 export default defineCommand({
   meta: {
     name: "from-stdin",
-    description: "Parse RDF from stdin bytes → dataset stream on stdout",
+    description: "Parse RDF from stdin bytes → N-Quads stream on stdout",
   },
   args: {
     format: {
@@ -22,11 +21,11 @@ export default defineCommand({
   },
   async run({ args }) {
     const format = resolveFormat(args.format);
-    if (format) {
-      await writeQuadStreamAsNQ(readQuadStreamFromStdin(format));
-      return;
-    }
-
-    writeDatasetAsNQ(await readStdin(format));
+    // With an explicit format we transcode quad-by-quad; without one we must
+    // buffer to sniff the format before parsing.
+    const source = format
+      ? readQuadStreamFromStdin(format)
+      : await readStdin(format);
+    await writeQuads(source);
   },
 });

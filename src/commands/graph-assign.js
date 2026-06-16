@@ -1,9 +1,10 @@
 import { defineCommand } from "citty";
 import rdf from "rdf-ext";
 import {
+  NQUADS,
   readQuadStreamFromStdin,
   resolveFormat,
-  writeQuadStreamAsNQ,
+  writeQuads,
 } from "../io.js";
 
 export default defineCommand({
@@ -27,17 +28,17 @@ export default defineCommand({
     }
 
     const graph = rdf.namedNode(args.graph);
-    await writeQuadStreamAsNQ(
-      readQuadStreamFromStdin(
-        resolveFormat(args.format) || "application/n-quads",
-      ),
-      (quad) =>
-        rdf.quad(
-          quad.subject,
-          quad.predicate,
-          quad.object,
-          quad.graph.termType === "DefaultGraph" ? graph : quad.graph,
-        ),
+    await writeQuads(
+      readQuadStreamFromStdin(resolveFormat(args.format) || NQUADS),
+      {
+        map: (quad) =>
+          rdf.quad(
+            quad.subject,
+            quad.predicate,
+            quad.object,
+            quad.graph.termType === "DefaultGraph" ? graph : quad.graph,
+          ),
+      },
     );
   },
 });

@@ -1,17 +1,6 @@
 import { defineCommand } from "citty";
-import rdf from "rdf-ext";
-import { pathToFileGraph, streamFileQuads } from "../inputs.js";
-import { resolveFormat, writeQuadStreamAsNQ } from "../io.js";
-
-function assignDefaultGraph(graph) {
-  return (quad) =>
-    rdf.quad(
-      quad.subject,
-      quad.predicate,
-      quad.object,
-      quad.graph.termType === "DefaultGraph" ? graph : quad.graph,
-    );
-}
+import { quadsFromPaths } from "../inputs.js";
+import { resolveFormat, writeQuads } from "../io.js";
 
 export default defineCommand({
   meta: {
@@ -46,25 +35,18 @@ export default defineCommand({
       process.exit(1);
     }
 
-    const forcedFormat = resolveFormat(args.format);
     let failed = false;
-    for (const file of files) {
-      try {
-        const stream = streamFileQuads(file, forcedFormat);
-        if (graphFrom === "path") {
-          await writeQuadStreamAsNQ(
-            stream,
-            assignDefaultGraph(pathToFileGraph(file)),
-          );
-        } else {
-          await writeQuadStreamAsNQ(stream);
-        }
-      } catch (error) {
-        failed = true;
-        process.stderr.write(`error: ${file}: ${error}\n`);
-      }
-    }
+    await writeQuads(
+      quadsFromPaths(files, {
+        format: resolveFormat(args.format),
+        graphFrom,
+        onError: (file, error) => {
+          failed = true;
+          process.stderr.write(`error: ${file}: ${error}\n`);
+        },
+      }),
+    );
 
-    if (failed) process.exit(1);
+    if (failed) process.exitCode = 1;
   },
 });
