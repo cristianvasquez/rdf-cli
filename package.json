@@ -33,8 +33,6 @@
   },
   "homepage": "https://github.com/cristianvasquez/rdf-cli#readme",
   "dependencies": {
-    "@graphy/content.trig.write": "^4.3.7",
-    "@graphy/content.ttl.write": "^4.3.7",
     "@rdfjs/formats": "^4.0.0",
     "citty": "^0.1.6",
     "get-stream": "^9.0.1",
