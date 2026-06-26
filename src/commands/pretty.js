@@ -1,44 +1,44 @@
-import { defineCommand } from "citty";
-import { loadPrefixes, readStdin, resolveFormat } from "../io.js";
-import { datasetToString, TRIG, TURTLE } from "../outputs.js";
+import { defineCommand } from 'citty'
+import { loadPrefixes, readStdin, resolveFormat } from '../io.js'
+import { datasetToString, TRIG, TURTLE } from '../outputs.js'
 
 export default defineCommand({
   meta: {
-    name: "pretty",
-    description: "Render dataset stream as Turtle or TriG",
+    name: 'pretty',
+    description: 'Render dataset stream as Turtle or TriG',
   },
   args: {
     format: {
-      type: "string",
-      alias: "f",
+      type: 'string',
+      alias: 'f',
       description:
-        "Output format: trig (default) or turtle. Turtle output drops graph assignments.",
-      default: "trig",
+        'Output format: trig (default) or turtle. Turtle output drops graph assignments.',
+      default: 'trig',
     },
     prefixes: {
-      type: "string",
-      alias: "p",
+      type: 'string',
+      alias: 'p',
       description:
-        "Path to prefixes JSON file (auto-discovered: .prefixes.json)",
+        'Path to prefixes JSON file (auto-discovered: .prefixes.json)',
     },
-    "input-format": {
-      type: "string",
-      description: "Input format (default: n-quads)",
+    'input-format': {
+      type: 'string',
+      description: 'Input format (default: n-quads)',
     },
   },
-  async run({ args }) {
+  async run ({ args }) {
     const dataset = await readStdin(
-      resolveFormat(args["input-format"]) || "application/n-quads",
-    );
-    const format = args.format.toLowerCase() === "trig" ? TRIG : TURTLE;
-    const prefixes = await loadPrefixes(args.prefixes);
+      resolveFormat(args['input-format']) || 'application/n-quads',
+    )
+    const format = args.format.toLowerCase() === 'trig' ? TRIG : TURTLE
+    const prefixes = await loadPrefixes(args.prefixes)
     try {
       process.stdout.write(
         await datasetToString(dataset, { format, prefixes }),
-      );
+      )
     } catch (error) {
-      process.stderr.write(`error: ${error.message}\n`);
-      process.exit(1);
+      process.stderr.write(`error: ${error.message}\n`)
+      process.exit(1)
     }
   },
-});
+})
