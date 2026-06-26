@@ -38,8 +38,8 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - `graph-assign <iri>` assigns a named graph to graphless statements and preserves existing named graphs.
 - `graph-drop` removes graph terms while staying in dataset space.
 - `serialize` preserves the input dataset semantics in the requested serialization, subject to the target format's ability to encode graphs.
-- `pretty --format turtle` requires graphless input for faithful Turtle output.
-- `pretty --format trig` preserves named graphs and may serialize graphless statements as default-graph content.
+- `pretty` defaults to TriG so named graphs are preserved.
+- `pretty --format turtle` forces Turtle output and drops graph assignments because Turtle cannot encode named graphs.
 
 ## Input semantics by command
 
@@ -114,6 +114,6 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 
 - Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
 - `--input-format` may override the stdin parser format.
-- `--format turtle` produces pretty Turtle for graphless datasets.
-- `--format trig` produces pretty TriG and preserves named graphs.
+- `--format trig` produces pretty TriG and preserves named graphs. This is the default.
+- `--format turtle` produces pretty Turtle and drops graph assignments because Turtle cannot encode named graphs.
 - `pretty` is a sink: it renders the dataset stream for humans rather than preserving a machine-oriented RDF pipe format.

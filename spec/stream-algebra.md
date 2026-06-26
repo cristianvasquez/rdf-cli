@@ -232,19 +232,21 @@ In the current CLI this primitive is exposed as:
 - Input: dataset stream
 - Output: serialized RDF text stream
 
-## Constraints for sinks
+## Sink format behavior
 
-Some sinks require stronger preconditions than transforms.
+Sinks serialize the dataset into the requested target format. The caller chooses
+the graph policy by choosing a format.
 
 ### Turtle sinks
 
 - Turtle cannot faithfully encode named graphs.
-- `rdf pretty --format turtle` should require graphless input.
-- If graph terms are present, users should insert an explicit graph policy step first.
+- `rdf pretty --format turtle` drops graph assignments.
+- Use `rdf pretty` or `rdf pretty --format trig` when graph assignments must be preserved.
 
 ### TriG sinks
 
 - TriG can encode datasets with named graphs.
+- `rdf pretty` defaults to TriG.
 - If the dataset includes graphless statements, the sink should preserve them as default-graph statements rather than invent a named graph.
 
 ## Implemented command mapping

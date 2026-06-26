@@ -44,13 +44,6 @@ function graphLabel(graph) {
 }
 
 async function toTurtleString(dataset, prefixes = {}) {
-  for (const quad of dataset) {
-    if (quad.graph.termType !== "DefaultGraph") {
-      throw new Error(
-        "turtle output requires graphless input; use graph-drop first",
-      );
-    }
-  }
   return serializeTriples([...dataset], prefixesToMap(prefixes));
 }
 

@@ -164,10 +164,11 @@ Pretty-print a dataset stream as Turtle or TriG.
 
 ```bash
 rdf glob './data/**/*.ttl' | rdf from-paths | rdf pretty
-rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path | rdf pretty --format trig
+rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path | rdf pretty
+rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path | rdf pretty --format turtle
 ```
 
-`pretty --format turtle` requires graphless input. Use `graph-drop` first when dropping graphs is intentional.
+`pretty` defaults to TriG so named graphs are preserved. `pretty --format turtle` forces Turtle output and drops graph assignments.
 
 Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--prefixes <file>`.
 

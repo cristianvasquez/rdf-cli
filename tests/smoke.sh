@@ -156,14 +156,17 @@ out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
 assert_contains "$out" "Bob" "graph-drop | pretty: turtle renders after dropping graphs"
 assert_not_contains "$out" "file://" "graph-drop: file graph removed"
 
-if printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
   | $CLI from-paths --graph-from path \
-  | $CLI pretty 2>"$TMP/err"; then
-  fail "pretty turtle: expected failure on named graphs"
-else
-  ok "pretty turtle: fails on named graphs"
-fi
-assert_contains "$(cat "$TMP/err")" "graph-drop first" "pretty turtle: stderr explains graph policy"
+  | $CLI pretty)
+assert_contains "$out" "file://" "pretty default: named graph shown as TriG"
+assert_contains "$out" "Bob" "pretty default: data preserved"
+
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" \
+  | $CLI from-paths --graph-from path \
+  | $CLI pretty --format turtle)
+assert_not_contains "$out" "file://" "pretty forced turtle: graph assignment dropped"
+assert_contains "$out" "Bob" "pretty forced turtle: data preserved"
 
 printf '\nserialize\n'
 

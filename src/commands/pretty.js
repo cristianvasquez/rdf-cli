@@ -12,8 +12,8 @@ export default defineCommand({
       type: "string",
       alias: "f",
       description:
-        "Output format: turtle (default) or trig. Use trig when the stream contains named graphs — turtle silently drops graph assignments.",
-      default: "turtle",
+        "Output format: trig (default) or turtle. Turtle output drops graph assignments.",
+      default: "trig",
     },
     prefixes: {
       type: "string",
