@@ -2,7 +2,7 @@ import { defineCommand } from 'citty'
 import { readFile } from 'node:fs/promises'
 import { NQUADS, resolveFormat } from '../formats.js'
 import { readFromStdin } from '../parse.js'
-import { createSelectStream } from '../sparql.js'
+import { createSelectStream } from '../transforms/sparql.js'
 
 function termValue (term) {
   if (!term) return ''

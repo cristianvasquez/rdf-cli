@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import rdf from 'rdf-ext'
-import { createValidateStream } from '../src/shacl.js'
+import { createValidateStream } from '../src/transforms/shacl.js'
 import { streamFileQuads } from '../src/parse.js'
 
 const fixturesDir = fileURLToPath(new URL('./fixtures', import.meta.url))

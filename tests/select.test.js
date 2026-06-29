@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import rdf from 'rdf-ext'
-import { createSelectStream } from '../src/sparql.js'
+import { createSelectStream } from '../src/transforms/sparql.js'
 
 const ex = (s) => rdf.namedNode(`http://example.org/${s}`)
 

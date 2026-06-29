@@ -3,11 +3,11 @@ import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 import Validator from 'shacl-engine/Validator.js'
-import { collectDataset, streamFileQuads } from './parse.js'
+import { collectDataset, streamFileQuads } from '../parse.js'
 
 const BUILTIN_SHAPES = {
-  shacl: fileURLToPath(new URL('../resources/shacl-shacl.ttl', import.meta.url)),
-  skos: fileURLToPath(new URL('../resources/skos-shacl.ttl', import.meta.url)),
+  shacl: fileURLToPath(new URL('../../resources/shacl-shacl.ttl', import.meta.url)),
+  skos: fileURLToPath(new URL('../../resources/skos-shacl.ttl', import.meta.url)),
 }
 
 export function resolveBuiltinShapes (name) {

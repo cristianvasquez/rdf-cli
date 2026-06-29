@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { NQUADS, resolveFormat } from '../formats.js'
 import { readFromStdin } from '../parse.js'
 import { writeQuads } from '../sinks/quads.js'
-import { createConstructStream } from '../sparql.js'
+import { createConstructStream } from '../transforms/sparql.js'
 
 export default defineCommand({
   meta: {

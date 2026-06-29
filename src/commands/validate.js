@@ -2,7 +2,7 @@ import { defineCommand } from 'citty'
 import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../parse.js'
 import { writeQuads } from '../sinks/quads.js'
-import { createValidateStream, formatMarkdownReport, resolveBuiltinShapes, summarizeReport } from '../shacl.js'
+import { createValidateStream, formatMarkdownReport, resolveBuiltinShapes, summarizeReport } from '../transforms/shacl.js'
 
 const DEFAULT_GRAPH = 'urn:validation-report'
 
