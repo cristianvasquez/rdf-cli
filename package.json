@@ -14,8 +14,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node tests/pretty.test.js && bash tests/smoke.sh",
-    "test:js": "node tests/pretty.test.js",
+    "test": "node --test tests/*.test.js && bash tests/smoke.sh",
+    "test:js": "node --test tests/*.test.js",
     "smoke": "bash tests/smoke.sh"
   },
   "repository": {

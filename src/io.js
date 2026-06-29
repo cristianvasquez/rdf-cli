@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { Readable, Transform } from 'node:stream'
+import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import rdf from 'rdf-ext'
 
@@ -26,22 +26,34 @@ export const FORMAT_ALIASES = {
   n3: 'text/n3',
 }
 
+export const FILE_EXTENSIONS = {
+  '.jsonld': 'application/ld+json',
+  '.trig': 'application/trig',
+  '.nq': 'application/n-quads',
+  '.nt': 'application/n-triples',
+  '.n3': 'text/n3',
+  '.ttl': 'text/turtle',
+  '.rdf': 'application/rdf+xml',
+}
+
 export function resolveFormat (fmt) {
   if (!fmt) return null
   return FORMAT_ALIASES[fmt.toLowerCase()] || fmt
 }
 
+export function guessMimeType (filePath) {
+  return FILE_EXTENSIONS[filePath.slice(filePath.lastIndexOf('.'))] ?? null
+}
+
 export function detectFormat (sample) {
   const text = sample.trimStart()
   if (/^(@prefix|@base|\bPREFIX\b|\bBASE\b)/i.test(text)) return 'text/turtle'
-  if (text.startsWith('{') || text.startsWith('['))
-    return 'application/ld+json'
+  if (text.startsWith('{') || text.startsWith('[')) return 'application/ld+json'
   if (/^<\?xml|^<rdf:/i.test(text)) return 'application/rdf+xml'
   if (/^\s*(?:GRAPH\s+<|<[^>]+>\s*\{)/m.test(text)) return 'application/trig'
 
   const firstLine =
-    text.split('\n').
-      find((line) => line.trim() && !line.trim().startsWith('#')) || ''
+    text.split('\n').find((line) => line.trim() && !line.trim().startsWith('#')) || ''
   const terms =
     firstLine.match(
       /(<[^>]+>|_:\S+|"(?:[^"\\]|\\.)*"(?:[@^][^\s.]+)?|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
@@ -58,7 +70,6 @@ export async function readDatasetFromStream (stream, hintFormat, errorMessage) {
     process.stderr.write(`${errorMessage}\n`)
     process.exit(1)
   }
-
   const dataset = rdf.dataset()
   await dataset.import(formats.parsers.import(format, Readable.from([buffer])))
   return dataset
@@ -72,12 +83,8 @@ export async function readStdin (hintFormat) {
   )
 }
 
-export function readQuadStream (stream, format) {
-  return formats.parsers.import(format, stream)
-}
-
 export function readQuadStreamFromStdin (format) {
-  return readQuadStream(process.stdin, format)
+  return formats.parsers.import(format, process.stdin)
 }
 
 export async function * readLines (stream) {
@@ -104,28 +111,19 @@ export async function loadPrefixes (prefixFile) {
   return {}
 }
 
-function quadMapper (map) {
-  return new Transform({
-    objectMode: true,
-    transform (quad, _encoding, callback) {
-      callback(null, map(quad))
-    },
-  })
+// Convert any quad source (Readable, dataset, async iterable) to a Readable
+// stream in object mode — necessary before piping through a Transform.
+export function toReadable (source) {
+  return source instanceof Readable ? source : Readable.from(source, { objectMode: true })
 }
 
-// Serialize a quad source to stdout. `source` may be a quad stream, an
-// rdf-ext dataset, or any (async) iterable of quads; `map` optionally
-// rewrites each quad. Backpressure is handled by piping; stdout is left
-// open so a command can emit several quad sources in sequence.
-export async function writeQuads (source, { format = NQUADS, map } = {}) {
-  const input =
-    source instanceof Readable
-      ? source
-      : Readable.from(source, { objectMode: true })
-  const quads = map ? input.pipe(quadMapper(map)) : input
+// Serialize a quad source to stdout. `source` may be a Readable quad stream,
+// an rdf-ext dataset, or any (async) iterable of quads. Backpressure is
+// handled via pipeline; stdout is left open so a command can emit multiple
+// sources in sequence.
+export async function writeQuads (source, { format = NQUADS } = {}) {
+  const quads = toReadable(source)
   const bytes = formats.serializers.import(format, quads)
-  for (const upstream of new Set([input, quads])) {
-    upstream.on('error', (error) => bytes.destroy(error))
-  }
+  quads.on('error', (err) => bytes.destroy(err))
   await pipeline(bytes, process.stdout, { end: false })
 }

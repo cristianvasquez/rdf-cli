@@ -1,11 +1,6 @@
 import { defineCommand } from 'citty'
-import rdf from 'rdf-ext'
-import {
-  NQUADS,
-  readQuadStreamFromStdin,
-  resolveFormat,
-  writeQuads,
-} from '../io.js'
+import { NQUADS, readQuadStreamFromStdin, resolveFormat, writeQuads } from '../io.js'
+import { assignGraph } from '../transforms/assignGraph.js'
 
 export default defineCommand({
   meta: {
@@ -27,18 +22,7 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const graph = rdf.namedNode(args.graph)
-    await writeQuads(
-      readQuadStreamFromStdin(resolveFormat(args.format) || NQUADS),
-      {
-        map: (quad) =>
-          rdf.quad(
-            quad.subject,
-            quad.predicate,
-            quad.object,
-            quad.graph.termType === 'DefaultGraph' ? graph : quad.graph,
-          ),
-      },
-    )
+    const source = readQuadStreamFromStdin(resolveFormat(args.format) || NQUADS)
+    await writeQuads(source.pipe(assignGraph(args.graph)))
   },
 })

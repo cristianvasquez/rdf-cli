@@ -1,16 +1,11 @@
 import { defineCommand } from 'citty'
-import rdf from 'rdf-ext'
-import {
-  NQUADS,
-  readQuadStreamFromStdin,
-  resolveFormat,
-  writeQuads,
-} from '../io.js'
+import { NQUADS, readQuadStreamFromStdin, resolveFormat, writeQuads } from '../io.js'
+import { dropGraph } from '../transforms/dropGraph.js'
 
 export default defineCommand({
   meta: {
     name: 'graph-drop',
-    description: 'Drop graph terms while staying in dataset space',
+    description: 'Drop graph terms — move all quads into the default graph.',
   },
   args: {
     format: {
@@ -20,17 +15,7 @@ export default defineCommand({
     },
   },
   async run ({ args }) {
-    await writeQuads(
-      readQuadStreamFromStdin(resolveFormat(args.format) || NQUADS),
-      {
-        map: (quad) =>
-          rdf.quad(
-            quad.subject,
-            quad.predicate,
-            quad.object,
-            rdf.defaultGraph(),
-          ),
-      },
-    )
+    const source = readQuadStreamFromStdin(resolveFormat(args.format) || NQUADS)
+    await writeQuads(source.pipe(dropGraph()))
   },
 })

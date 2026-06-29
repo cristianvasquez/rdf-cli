@@ -1,16 +1,14 @@
 import { defineCommand } from 'citty'
-import rdf from 'rdf-ext'
 import {
   NQUADS,
   NTRIPLES,
   readQuadStreamFromStdin,
   readStdin,
   resolveFormat,
+  toReadable,
   writeQuads,
 } from '../io.js'
-
-const dropGraph = (quad) =>
-  rdf.quad(quad.subject, quad.predicate, quad.object, rdf.defaultGraph())
+import { dropGraph } from '../transforms/dropGraph.js'
 
 export default defineCommand({
   meta: {
@@ -31,20 +29,17 @@ export default defineCommand({
   },
   async run ({ args }) {
     const inputFormat = resolveFormat(args['input-format']) || NQUADS
-    const triples = resolveFormat(args.format) === NTRIPLES
+    const outputFormat = resolveFormat(args.format) === NTRIPLES ? NTRIPLES : NQUADS
 
     // N-Quads input streams quad-by-quad; other formats must be buffered to a
     // dataset before serializing.
-    const source =
+    const raw =
       inputFormat === NQUADS
         ? readQuadStreamFromStdin(inputFormat)
         : await readStdin(inputFormat)
 
-    // The N-Triples serializer still emits the graph term, so drop it here to
-    // keep the output graphless.
-    await writeQuads(source, {
-      format: triples ? NTRIPLES : NQUADS,
-      map: triples ? dropGraph : undefined,
-    })
+    // N-Triples serializer still emits the graph term, so strip it before output.
+    const source = outputFormat === NTRIPLES ? toReadable(raw).pipe(dropGraph()) : raw
+    await writeQuads(source, { format: outputFormat })
   },
 })
