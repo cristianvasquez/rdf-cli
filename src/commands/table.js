@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty'
-import { readLines } from '../io.js'
+import { readLines } from '../parse.js'
 
 function csvEscape (value) {
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
@@ -14,8 +14,7 @@ function writeCSVHeader (headers) {
 
 function writeCSVRow (row, headers) {
   process.stdout.write(
-    `${headers.map((header) => csvEscape(String(row[header] ?? ''))).
-      join(',')}\n`,
+    `${headers.map((header) => csvEscape(String(row[header] ?? ''))).join(',')}\n`,
   )
 }
 
@@ -25,8 +24,7 @@ function writeTSVHeader (headers) {
 
 function writeTSVRow (row, headers) {
   process.stdout.write(
-    `${headers.map((header) => String(row[header] ?? '').replace(/\t/g, ' ')).
-      join('\t')}\n`,
+    `${headers.map((header) => String(row[header] ?? '').replace(/\t/g, ' ')).join('\t')}\n`,
   )
 }
 

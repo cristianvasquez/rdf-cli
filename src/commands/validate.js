@@ -1,12 +1,8 @@
 import { defineCommand } from 'citty'
-import { NQUADS, readStdin, writeQuads } from '../io.js'
-import { formatMarkdownReport, summarizeReport } from '../report.js'
-import {
-  loadShapesDataset,
-  reportToNamedGraph,
-  resolveBuiltinShapes,
-  runValidation,
-} from '../validate.js'
+import { NQUADS } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { writeQuads } from '../sinks/quads.js'
+import { createValidateStream, formatMarkdownReport, resolveBuiltinShapes, summarizeReport } from '../shacl.js'
 
 const DEFAULT_GRAPH = 'urn:validation-report'
 
@@ -37,10 +33,7 @@ export default defineCommand({
     const shapeSources = []
 
     if (args.shapes) {
-      for (const pattern of String(args.shapes).
-        split(',').
-        map((s) => s.trim()).
-        filter(Boolean)) {
+      for (const pattern of String(args.shapes).split(',').map((s) => s.trim()).filter(Boolean)) {
         shapeSources.push(pattern)
       }
     }
@@ -60,25 +53,20 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const graphURI = args['report-graph'] ?? DEFAULT_GRAPH
-    const [dataDataset, shapesDataset] = await Promise.all([
-      readStdin(NQUADS),
-      loadShapesDataset(shapeSources),
-    ])
+    const source = await readFromStdin(NQUADS)
+    const { stream, conforms, report } = await createValidateStream(source, shapeSources, {
+      reportGraph: args['report-graph'] ?? DEFAULT_GRAPH,
+    })
 
-    const report = await runValidation(dataDataset, shapesDataset)
-    await writeQuads(dataDataset)
-    await writeQuads(reportToNamedGraph(report, graphURI))
+    await writeQuads(stream)
 
     if (args['markdown-report']) {
       const label = args.builtin
         ? `SHACL Validation (${String(args.builtin).toUpperCase()})`
         : 'SHACL Validation'
-      process.stderr.write(
-        `${formatMarkdownReport(summarizeReport(report), { label })}\n`,
-      )
+      process.stderr.write(`${formatMarkdownReport(summarizeReport(report), { label })}\n`)
     }
 
-    if (!report.conforms) process.exitCode = 1
+    if (!conforms) process.exitCode = 1
   },
 })

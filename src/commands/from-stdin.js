@@ -1,10 +1,7 @@
 import { defineCommand } from 'citty'
-import {
-  readQuadStreamFromStdin,
-  readStdin,
-  resolveFormat,
-  writeQuads,
-} from '../io.js'
+import { resolveFormat } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { writeQuads } from '../sinks/quads.js'
 
 export default defineCommand({
   meta: {
@@ -16,16 +13,11 @@ export default defineCommand({
       type: 'string',
       alias: 'f',
       description:
-        'Input format for stdin (auto-detected by default). Accepted: turtle | ttl | trig | nquads | nq | ntriples | nt | jsonld | json | rdfxml | xml | n3',
+        'Input format (auto-detected by default). Accepted: turtle | ttl | trig | nquads | nq | ntriples | nt | jsonld | json | rdfxml | xml | n3',
     },
   },
   async run ({ args }) {
-    const format = resolveFormat(args.format)
-    // With an explicit format we transcode quad-by-quad; without one we must
-    // buffer to sniff the format before parsing.
-    const source = format
-      ? readQuadStreamFromStdin(format)
-      : await readStdin(format)
+    const source = await readFromStdin(resolveFormat(args.format))
     await writeQuads(source)
   },
 })

@@ -1,5 +1,7 @@
 import { defineCommand } from 'citty'
-import { NQUADS, readQuadStreamFromStdin, resolveFormat, writeQuads } from '../io.js'
+import { NQUADS, resolveFormat } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { toReadable, writeQuads } from '../sinks/quads.js'
 import { dropGraph } from '../transforms/dropGraph.js'
 
 export default defineCommand({
@@ -15,7 +17,7 @@ export default defineCommand({
     },
   },
   async run ({ args }) {
-    const source = readQuadStreamFromStdin(resolveFormat(args.format) || NQUADS)
-    await writeQuads(source.pipe(dropGraph()))
+    const source = await readFromStdin(resolveFormat(args.format) || NQUADS)
+    await writeQuads(toReadable(source).pipe(dropGraph()))
   },
 })

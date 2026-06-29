@@ -1,8 +1,27 @@
 import { TurtleSerializer } from '@rdfjs/formats'
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import rdf from 'rdf-ext'
+import { collectDataset } from '../parse.js'
+import { TRIG, TURTLE } from '../formats.js'
 
-export const TURTLE = 'text/turtle'
-export const TRIG = 'application/trig'
+export { TRIG, TURTLE }
+
+export async function loadPrefixes (prefixFile) {
+  const candidates = [
+    prefixFile,
+    join(process.cwd(), '.prefixes.json'),
+    join(process.cwd(), 'prefixes.json'),
+  ].filter(Boolean)
+
+  for (const file of candidates) {
+    if (existsSync(file)) {
+      return JSON.parse(await readFile(file, 'utf8'))
+    }
+  }
+  return {}
+}
 
 function prefixesToMap (prefixes = {}) {
   return new Map(
@@ -18,9 +37,6 @@ function serializeTriples (quads, prefixMap) {
   return serializer.transform(rdf.dataset(quads))
 }
 
-// Split a Turtle document into its leading @prefix/@base header and the body.
-// The serializer emits the same header for every block, so TriG can declare
-// prefixes once and reuse the bodies inside graph braces.
 function splitHeader (turtle) {
   const lines = turtle.split('\n')
   let i = 0
@@ -35,9 +51,7 @@ function indent (text) {
 }
 
 function graphLabel (graph) {
-  return graph.termType === 'BlankNode'
-    ? `_:${graph.value}`
-    : `<${graph.value}>`
+  return graph.termType === 'BlankNode' ? `_:${graph.value}` : `<${graph.value}>`
 }
 
 async function toTurtleString (dataset, prefixes = {}) {
@@ -54,8 +68,7 @@ async function toTrigString (dataset, prefixes = {}) {
     }
     const entry = namedGraphs.get(quad.graph.value)
     if (entry) entry.quads.push(quad)
-    else namedGraphs.set(quad.graph.value,
-      { graph: quad.graph, quads: [quad] })
+    else namedGraphs.set(quad.graph.value, { graph: quad.graph, quads: [quad] })
   }
 
   if (namedGraphs.size === 0) return toTurtleString(dataset, prefixes)
@@ -65,17 +78,13 @@ async function toTrigString (dataset, prefixes = {}) {
   const blocks = []
 
   if (defaultGraph.length) {
-    const { header: h, body } = splitHeader(
-      await serializeTriples(defaultGraph, prefixMap),
-    )
+    const { header: h, body } = splitHeader(await serializeTriples(defaultGraph, prefixMap))
     header ||= h
     if (body) blocks.push(body)
   }
 
   for (const { graph, quads } of namedGraphs.values()) {
-    const { header: h, body } = splitHeader(
-      await serializeTriples(quads, prefixMap),
-    )
+    const { header: h, body } = splitHeader(await serializeTriples(quads, prefixMap))
     header ||= h
     blocks.push(`${graphLabel(graph)} {\n${indent(body)}\n}`)
   }
@@ -87,4 +96,14 @@ export async function datasetToString (dataset, { format, prefixes }) {
   return format === TRIG
     ? toTrigString(dataset, prefixes)
     : toTurtleString(dataset, prefixes)
+}
+
+export async function writePretty (source, { format = TRIG, prefixes = {} } = {}) {
+  const dataset = await collectDataset(source)
+  try {
+    process.stdout.write(await datasetToString(dataset, { format, prefixes }))
+  } catch (error) {
+    process.stderr.write(`error: ${error.message}\n`)
+    process.exit(1)
+  }
 }

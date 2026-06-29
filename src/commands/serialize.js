@@ -1,13 +1,7 @@
 import { defineCommand } from 'citty'
-import {
-  NQUADS,
-  NTRIPLES,
-  readQuadStreamFromStdin,
-  readStdin,
-  resolveFormat,
-  toReadable,
-  writeQuads,
-} from '../io.js'
+import { NQUADS, NTRIPLES, resolveFormat } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { toReadable, writeQuads } from '../sinks/quads.js'
 import { dropGraph } from '../transforms/dropGraph.js'
 
 export default defineCommand({
@@ -31,15 +25,10 @@ export default defineCommand({
     const inputFormat = resolveFormat(args['input-format']) || NQUADS
     const outputFormat = resolveFormat(args.format) === NTRIPLES ? NTRIPLES : NQUADS
 
-    // N-Quads input streams quad-by-quad; other formats must be buffered to a
-    // dataset before serializing.
-    const raw =
-      inputFormat === NQUADS
-        ? readQuadStreamFromStdin(inputFormat)
-        : await readStdin(inputFormat)
+    const source = await readFromStdin(inputFormat)
 
     // N-Triples serializer still emits the graph term, so strip it before output.
-    const source = outputFormat === NTRIPLES ? toReadable(raw).pipe(dropGraph()) : raw
-    await writeQuads(source, { format: outputFormat })
+    const piped = outputFormat === NTRIPLES ? toReadable(source).pipe(dropGraph()) : source
+    await writeQuads(piped, { format: outputFormat })
   },
 })

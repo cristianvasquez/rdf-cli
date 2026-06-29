@@ -1,7 +1,8 @@
 import { defineCommand } from 'citty'
 import { readFile } from 'node:fs/promises'
-import { readStdin, resolveFormat } from '../io.js'
-import { datasetToStore, storeSelect } from '../store.js'
+import { NQUADS, resolveFormat } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { createSelectStream } from '../sparql.js'
 
 function termValue (term) {
   if (!term) return ''
@@ -9,13 +10,9 @@ function termValue (term) {
   return term.value
 }
 
-function toJSONL (rows) {
-  for (const row of rows) {
-    process.stdout.write(
-      `${JSON.stringify(Object.fromEntries(Object.entries(row).
-        map(([key, value]) => [key, termValue(value)])))}\n`,
-    )
-  }
+function bindingToJSONL (row) {
+  return `${JSON.stringify(Object.fromEntries(Object.entries(row).
+    map(([key, value]) => [key, termValue(value)])))}\n`
 }
 
 export default defineCommand({
@@ -42,19 +39,13 @@ export default defineCommand({
       ? await readFile(args['query-file'], 'utf8')
       : args.query
     if (!query) {
-      process.stderr.write(
-        'error: provide a SPARQL query as argument or via --query-file\n',
-      )
+      process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
       process.exit(1)
     }
 
-    toJSONL(
-      storeSelect(
-        datasetToStore(
-          await readStdin(resolveFormat(args.format) || 'application/n-quads'),
-        ),
-        query,
-      ),
-    )
+    const source = await readFromStdin(resolveFormat(args.format) || NQUADS)
+    for (const row of await createSelectStream(source, query)) {
+      process.stdout.write(bindingToJSONL(row))
+    }
   },
 })

@@ -1,8 +1,6 @@
 import { defineCommand, runMain } from 'citty'
 import construct from './commands/construct.js'
-import fromPaths from './commands/from-paths.js'
 import fromStdin from './commands/from-stdin.js'
-import glob from './commands/glob.js'
 import graphAssign from './commands/graph-assign.js'
 import graphDrop from './commands/graph-drop.js'
 import pretty from './commands/pretty.js'
@@ -20,9 +18,7 @@ const main = defineCommand({
       'RDF stream algebra CLI. Commands communicate via N-Quads streams on stdin/stdout.',
   },
   subCommands: {
-    glob,
     read,
-    'from-paths': fromPaths,
     'from-stdin': fromStdin,
     select,
     table,

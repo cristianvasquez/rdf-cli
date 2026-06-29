@@ -1,7 +1,9 @@
 import { defineCommand } from 'citty'
 import { readFile } from 'node:fs/promises'
-import { NQUADS, readStdin, resolveFormat, writeQuads } from '../io.js'
-import { datasetToStore, storeConstruct } from '../store.js'
+import { NQUADS, resolveFormat } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { writeQuads } from '../sinks/quads.js'
+import { createConstructStream } from '../sparql.js'
 
 export default defineCommand({
   meta: {
@@ -31,17 +33,11 @@ export default defineCommand({
       ? await readFile(args['query-file'], 'utf8')
       : args.query
     if (!query) {
-      process.stderr.write(
-        'error: provide a SPARQL query as argument or via --query-file\n',
-      )
+      process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
       process.exit(1)
     }
 
-    await writeQuads(
-      storeConstruct(
-        datasetToStore(await readStdin(resolveFormat(args.format) || NQUADS)),
-        query,
-      ),
-    )
+    const source = await readFromStdin(resolveFormat(args.format) || NQUADS)
+    await writeQuads(await createConstructStream(source, query))
   },
 })

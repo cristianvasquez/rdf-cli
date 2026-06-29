@@ -1,4 +1,5 @@
 import { Store } from 'oxigraph'
+import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 
 function termInstance (term) {
@@ -10,42 +11,45 @@ function termInstance (term) {
   return term
 }
 
-export function datasetToStore (dataset) {
+export async function collectToStore (source) {
   const store = new Store()
   let dropped = 0
-
-  for (const quad of dataset) {
+  for await (const quad of source) {
     try {
       store.add(quad)
     } catch {
       dropped++
     }
   }
-
   if (dropped > 0) process.stderr.write(`warning: dropped ${dropped} quads\n`)
   return store
 }
 
-export function storeConstruct (store, query) {
-  const dataset = rdf.dataset()
+function * constructQuads (store, query) {
   for (const triple of store.query(query)) {
-    dataset.add(
-      rdf.quad(
-        termInstance(triple.subject),
-        termInstance(triple.predicate),
-        termInstance(triple.object),
-        rdf.defaultGraph(),
-      ),
+    yield rdf.quad(
+      termInstance(triple.subject),
+      termInstance(triple.predicate),
+      termInstance(triple.object),
+      rdf.defaultGraph(),
     )
   }
-  return dataset
 }
 
-export function * storeSelect (store, query) {
+function * selectBindings (store, query) {
   for (const binding of store.query(query)) {
     const row = Object.fromEntries(binding)
-    for (const [key, value] of Object.entries(row))
-      row[key] = termInstance(value)
+    for (const [key, value] of Object.entries(row)) row[key] = termInstance(value)
     yield row
   }
+}
+
+export async function createConstructStream (source, query) {
+  const store = await collectToStore(source)
+  return Readable.from(constructQuads(store, query), { objectMode: true })
+}
+
+export async function createSelectStream (source, query) {
+  const store = await collectToStore(source)
+  return selectBindings(store, query)
 }

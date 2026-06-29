@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import rdf from "rdf-ext";
-import { datasetToString, TRIG, TURTLE } from "../src/outputs.js";
+import { datasetToString, TRIG, TURTLE } from "../src/sinks/pretty.js";
 
 const XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer";
 

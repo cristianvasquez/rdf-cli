@@ -1,21 +1,22 @@
 import { defineCommand } from 'citty'
-import { quadsFromPaths } from '../inputs.js'
-import { resolveFormat, writeQuads } from '../io.js'
+import { resolveFormat } from '../formats.js'
+import { readFromGlob } from '../parse.js'
+import { writeQuads } from '../sinks/quads.js'
 
 export default defineCommand({
   meta: {
     name: 'read',
     description:
-      'Convenience: parse RDF files given as path arguments → N-Quads stream on stdout. ' +
-      'Shortcut for `glob | from-paths` when you already know the paths and want explicit files (no glob expansion — let the shell expand wildcards, or use `glob | from-paths` for recursive ** patterns). ' +
-      'Multiple files are merged into a single stream. Graphless triples remain in the default graph unless --graph-from path is set, which uses the file path as the named graph IRI for each file\'s default-graph triples.',
+      'Expand glob patterns, parse matched RDF files → N-Quads stream on stdout. ' +
+      'Multiple patterns are merged into a single stream. Graphless triples remain ' +
+      'in the default graph unless --graph-from path is set, which uses the file path ' +
+      'as the named graph IRI for each file\'s default-graph triples.',
   },
   args: {
     format: {
       type: 'string',
       alias: 'f',
-      description:
-        'Input format for all files (auto-detected by extension by default)',
+      description: 'Input format for all files (auto-detected by extension by default)',
     },
     'graph-from': {
       type: 'string',
@@ -23,9 +24,9 @@ export default defineCommand({
     },
   },
   async run ({ args }) {
-    const files = args._ || []
-    if (files.length === 0) {
-      process.stderr.write('error: provide one or more file paths\n')
+    const patterns = args._ || []
+    if (patterns.length === 0) {
+      process.stderr.write('error: provide one or more glob patterns\n')
       process.exit(1)
     }
 
@@ -37,7 +38,7 @@ export default defineCommand({
 
     let failed = false
     await writeQuads(
-      quadsFromPaths(files, {
+      readFromGlob(patterns, {
         format: resolveFormat(args.format),
         graphFrom,
         onError: (file, error) => {

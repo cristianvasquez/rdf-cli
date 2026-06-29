@@ -1,5 +1,7 @@
 import { defineCommand } from 'citty'
-import { NQUADS, readQuadStreamFromStdin, resolveFormat, writeQuads } from '../io.js'
+import { NQUADS, resolveFormat } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { toReadable, writeQuads } from '../sinks/quads.js'
 import { assignGraph } from '../transforms/assignGraph.js'
 
 export default defineCommand({
@@ -22,7 +24,7 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const source = readQuadStreamFromStdin(resolveFormat(args.format) || NQUADS)
-    await writeQuads(source.pipe(assignGraph(args.graph)))
+    const source = await readFromStdin(resolveFormat(args.format) || NQUADS)
+    await writeQuads(toReadable(source).pipe(assignGraph(args.graph)))
   },
 })

@@ -1,25 +1,24 @@
 import { defineCommand } from 'citty'
-import { loadPrefixes, readStdin, resolveFormat } from '../io.js'
-import { datasetToString, TRIG, TURTLE } from '../outputs.js'
+import { NQUADS, TRIG, TURTLE, resolveFormat } from '../formats.js'
+import { readFromStdin } from '../parse.js'
+import { loadPrefixes, writePretty } from '../sinks/pretty.js'
 
 export default defineCommand({
   meta: {
     name: 'pretty',
-    description: 'Render dataset stream as Turtle or TriG',
+    description: 'Render dataset stream as Turtle or TriG (default: trig)',
   },
   args: {
     format: {
       type: 'string',
       alias: 'f',
-      description:
-        'Output format: trig (default) or turtle. Turtle output drops graph assignments.',
+      description: 'Output format: trig (default) or turtle. Turtle output drops graph assignments.',
       default: 'trig',
     },
     prefixes: {
       type: 'string',
       alias: 'p',
-      description:
-        'Path to prefixes JSON file (auto-discovered: .prefixes.json)',
+      description: 'Path to prefixes JSON file (auto-discovered: .prefixes.json)',
     },
     'input-format': {
       type: 'string',
@@ -27,18 +26,9 @@ export default defineCommand({
     },
   },
   async run ({ args }) {
-    const dataset = await readStdin(
-      resolveFormat(args['input-format']) || 'application/n-quads',
-    )
-    const format = args.format.toLowerCase() === 'trig' ? TRIG : TURTLE
+    const source = await readFromStdin(resolveFormat(args['input-format']) || NQUADS)
+    const format = resolveFormat(args.format) === TURTLE ? TURTLE : TRIG
     const prefixes = await loadPrefixes(args.prefixes)
-    try {
-      process.stdout.write(
-        await datasetToString(dataset, { format, prefixes }),
-      )
-    } catch (error) {
-      process.stderr.write(`error: ${error.message}\n`)
-      process.exit(1)
-    }
+    await writePretty(source, { format, prefixes })
   },
 })
