@@ -28,19 +28,22 @@ function assignDefaultGraph (graph) {
     )
 }
 
-export async function * readFromGlob (patterns, { format, graphFrom, onError } = {}) {
-  const files = (
-    await Promise.all(patterns.map((pattern) => glob(pattern, { nodir: true })))
-  ).flat()
-
-  for (const file of files) {
+export async function * readFromPaths (files, { graphFrom, onError } = {}) {
+  for await (const file of files) {
     const map = graphFrom === 'path' ? assignDefaultGraph(pathToFileGraph(file)) : null
     try {
-      for await (const quad of streamFileQuads(file, format)) {
+      for await (const quad of streamFileQuads(file)) {
         yield map ? map(quad) : quad
       }
     } catch (error) {
       onError?.(file, error)
     }
   }
+}
+
+export async function * readFromGlob (patterns, options = {}) {
+  const files = (
+    await Promise.all(patterns.map((pattern) => glob(pattern, { nodir: true })))
+  ).flat()
+  yield * readFromPaths(files, options)
 }

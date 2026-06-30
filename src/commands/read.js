@@ -1,24 +1,19 @@
 import { defineCommand } from 'citty'
-import { resolveFormat } from '../formats.js'
 import { readFromGlob } from '../sources/glob.js'
 import { writeQuads } from '../sinks/quads.js'
+import { readFromStdin } from '../sources/stdin.js'
 
 export default defineCommand({
-  io: { stdin: 'None', stdout: 'NQuads' },
+  io: { stdin: 'RDFBytes', stdout: 'NQuads' },
   meta: {
     name: 'read',
     description:
-      'Expand glob patterns, parse matched RDF files → N-Quads stream on stdout. ' +
-      'Multiple patterns are merged into a single stream. Graphless triples remain ' +
-      'in the default graph unless --graph-from path is set, which uses the file path ' +
-      'as the named graph IRI for each file\'s default-graph triples.',
+      'Parse RDF from file paths or stdin into an N-Quads dataset stream. ' +
+      'With one or more path arguments, each path or glob is expanded and parsed. ' +
+      'With no arguments, RDF bytes are read from stdin and auto-detected. ' +
+      'Graphless triples remain in the default graph unless --graph-from path is set for file inputs.',
   },
   args: {
-    format: {
-      type: 'string',
-      alias: 'f',
-      description: 'Input format for all files (auto-detected by extension by default)',
-    },
     'graph-from': {
       type: 'string',
       description: 'Assign graph identity to graphless input: path',
@@ -26,21 +21,24 @@ export default defineCommand({
   },
   async run ({ args }) {
     const patterns = args._ || []
-    if (patterns.length === 0) {
-      process.stderr.write('error: provide one or more glob patterns\n')
-      process.exit(1)
-    }
-
     const graphFrom = args['graph-from']
     if (graphFrom && graphFrom !== 'path') {
       process.stderr.write('error: --graph-from only supports "path"\n')
       process.exit(1)
     }
 
+    if (patterns.length === 0) {
+      if (graphFrom) {
+        process.stderr.write('error: --graph-from path is only supported for file inputs\n')
+        process.exit(1)
+      }
+      await writeQuads(await readFromStdin())
+      return
+    }
+
     let failed = false
     await writeQuads(
       readFromGlob(patterns, {
-        format: resolveFormat(args.format),
         graphFrom,
         onError: (file, error) => {
           failed = true

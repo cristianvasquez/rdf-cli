@@ -29,12 +29,12 @@ The system should expose a small number of semantic stream kinds.
 
 - A path stream is a sequence of source identities such as file paths.
 - Its natural line encoding is one path per line.
-- Globs belong here. A glob expands to paths, not RDF.
+- Shell globs and tools such as `find` belong here. They expand to paths, not RDF.
 
 Examples:
 
 ```bash
-glob './data/**/*.ttl'
+printf '%s\n' ./data/**/*.ttl
 find data -name '*.ttl'
 ```
 
@@ -70,7 +70,7 @@ Commands should fit one of these roles.
 
 - Produce a stream from command arguments or external input.
 - Examples:
-  - glob to path stream
+  - shell path expansion to path stream
   - parse stdin bytes to dataset stream
 
 ### Transforms
@@ -129,8 +129,8 @@ Graph policy should be explicit and local.
 Examples:
 
 ```bash
-glob './data/**/*.ttl' | rdf from-paths --graph-from path
-glob './data/**/*.ttl' | rdf from-paths | graph assign <urn:batch>
+find ./data -name '*.ttl' | rdf from-paths --graph-from path
+rdf read ./data/**/*.ttl | rdf graph-assign <urn:batch>
 ```
 
 ### Drop explicitly
@@ -166,18 +166,13 @@ That distinction should be visible in command naming and documentation.
 Examples:
 
 ```bash
-rdf from-paths | rdf construct --query build.rq | rdf pretty --format trig
-rdf from-paths | query select --query report.rq | table csv
+find ./data -name '*.ttl' | rdf from-paths | rdf construct --query build.rq | rdf pretty --format trig
+rdf read ./data/**/*.ttl | rdf select --query report.rq | rdf table csv
 ```
 
 ## Suggested primitive conversions
 
 These primitives are enough to make the system feel like lego pieces.
-
-### `glob`
-
-- Input: none
-- Output: path stream
 
 ### `rdf from-paths`
 
@@ -187,9 +182,9 @@ These primitives are enough to make the system feel like lego pieces.
 - Preserves graphless statements unless configured otherwise.
 - If graph identity should be derived from file identity, that must happen here through an explicit option such as `--graph-from path`.
 
-### `rdf from-stdin`
+### `rdf read`
 
-- Input: byte stream on stdin
+- Input: file paths as arguments, or byte stream on stdin
 - Output: dataset stream
 
 ### `rdf construct`
@@ -197,12 +192,12 @@ These primitives are enough to make the system feel like lego pieces.
 - Input: dataset stream
 - Output: dataset stream
 
-### `query select`
+### `rdf select`
 
 - Input: dataset stream
 - Output: bindings stream
 
-### `shacl validate`
+### `rdf validate`
 
 - Input: dataset stream
 - Output: dataset stream
@@ -212,12 +207,12 @@ In the current CLI this primitive is exposed as:
 
 - `rdf validate`
 
-### `graph assign`
+### `rdf graph-assign`
 
 - Input: dataset stream
 - Output: dataset stream
 
-### `graph drop`
+### `rdf graph-drop`
 
 - Input: dataset stream
 - Output: dataset stream
@@ -226,11 +221,6 @@ In the current CLI this primitive is exposed as:
 
 - Input: dataset stream
 - Output: text stream
-
-### `rdf serialize`
-
-- Input: dataset stream
-- Output: serialized RDF text stream
 
 ## Sink format behavior
 
@@ -249,13 +239,17 @@ the graph policy by choosing a format.
 - `rdf pretty` defaults to TriG.
 - If the dataset includes graphless statements, the sink should preserve them as default-graph statements rather than invent a named graph.
 
+### N-Quads and N-Triples sinks
+
+- `rdf pretty --format nquads` preserves named graphs in a machine-oriented wire format.
+- `rdf pretty --format ntriples` drops graph assignments because N-Triples cannot encode named graphs.
+
 ## Implemented command mapping
 
 The current CLI surface follows the algebra with these primitive commands:
 
-- `glob`
+- `read`
 - `from-paths`
-- `from-stdin`
 - `select`
 - `table`
 - `construct`
@@ -263,7 +257,6 @@ The current CLI surface follows the algebra with these primitive commands:
 - `graph-assign`
 - `graph-drop`
 - `pretty`
-- `serialize`
 
 ## Minimal laws
 
@@ -291,20 +284,19 @@ These laws help users reason about pipelines.
 ### Path stream to dataset stream
 
 ```bash
-glob './data/**/*.ttl' | rdf from-paths
+find ./data -name '*.ttl' | rdf from-paths
 ```
 
 ### Assign graph identity from source paths
 
 ```bash
-glob './data/**/*.ttl' | rdf from-paths --graph-from path
+rdf read --graph-from path ./data/**/*.ttl
 ```
 
 ### Validate while preserving graphless statements
 
 ```bash
-glob './data/**/*.ttl' \
-  | rdf from-paths \
+rdf read ./data/**/*.ttl \
   | shacl validate --shapes shapes.ttl \
   | rdf pretty --format trig
 ```
@@ -312,17 +304,15 @@ glob './data/**/*.ttl' \
 ### Exit RDF space with a `SELECT`
 
 ```bash
-glob './data/**/*.ttl' \
-  | rdf from-paths \
-  | query select --query query.rq \
-  | table csv
+rdf read ./data/**/*.ttl \
+  | rdf select --query query.rq \
+  | rdf table csv
 ```
 
 ### Make graph dropping explicit
 
 ```bash
-glob './data/**/*.ttl' \
-  | rdf from-paths --graph-from path \
-  | graph drop \
+rdf read --graph-from path ./data/**/*.ttl \
+  | rdf graph-drop \
   | rdf pretty --format turtle
 ```

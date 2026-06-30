@@ -43,14 +43,21 @@ out=$($CLI read "$DATA/alice-knows-bob.rdf" "$DATA/with-errors/wrong-turtle.ttl"
 assert_contains "$(cat "$TMP/err")" "wrong-turtle.ttl" "read: parse error goes to stderr"
 assert_contains "$out" "Alice" "read: valid file still emits data"
 
-printf '\nfrom-stdin\n'
+out=$(cat "$DATA/bob-likes-alice.ttl" | $CLI read)
+assert_lines "$out" 3 "read stdin: turtle emits 3 statements"
+assert_not_contains "$out" "file://" "read stdin: stdin stays graphless"
 
-out=$(cat "$DATA/bob-likes-alice.ttl" | $CLI from-stdin --format turtle)
-assert_lines "$out" 3 "from-stdin: turtle emits 3 statements"
-assert_not_contains "$out" "file://" "from-stdin: stdin stays graphless"
+out=$(printf '<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n' | $CLI read)
+assert_contains "$out" "example.org/s" "read stdin: autodetects n-triples"
 
-out=$(printf '<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n' | $CLI from-stdin)
-assert_contains "$out" "example.org/s" "from-stdin: autodetects n-triples"
+printf '\nfrom-paths\n'
+
+out=$(printf '%s\n%s\n' "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" | $CLI from-paths 2>"$TMP/err")
+assert_lines "$out" 7 "from-paths: 7 statements from two files"
+assert_empty "$(cat "$TMP/err")" "from-paths: no stderr for valid files"
+
+out=$(printf '%s\n' "$DATA/bob-likes-alice.ttl" | $CLI from-paths --graph-from path)
+assert_contains "$out" "<file://$DATA/bob-likes-alice.ttl>" "from-paths: --graph-from path assigns file graph"
 
 printf '\nselect + table\n'
 
@@ -143,23 +150,6 @@ out=$($CLI read --graph-from path "$DATA/bob-likes-alice.ttl" \
 assert_not_contains "$out" "file://" "pretty forced turtle: graph assignment dropped"
 assert_contains "$out" "Bob" "pretty forced turtle: data preserved"
 
-printf '\nserialize\n'
-
-out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI serialize)
-assert_lines "$out" 3 "serialize nquads: 3 graphless statements"
-assert_not_contains "$out" "file://" "serialize nquads: graphless remains graphless"
-
-out=$($CLI read "$DATA/bob-likes-alice.ttl" \
-  | $CLI graph-assign urn:batch \
-  | $CLI serialize)
-assert_contains "$out" "<urn:batch>" "serialize nquads: named graph preserved"
-
-out=$($CLI read "$DATA/bob-likes-alice.ttl" \
-  | $CLI graph-assign urn:batch \
-  | $CLI serialize --format ntriples)
-assert_not_contains "$out" "urn:batch" "serialize ntriples: graph dropped by format"
-assert_lines "$out" 3 "serialize ntriples: 3 triples"
-
 printf '\npretty\n'
 
 out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI pretty)
@@ -174,6 +164,21 @@ out=$($CLI read "$DATA/bob-likes-alice.ttl" \
   | $CLI pretty --format trig)
 assert_contains "$out" "<urn:batch>" "pretty trig: named graph shown"
 assert_contains "$out" "Bob" "pretty trig: data preserved"
+
+out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI pretty --format nquads)
+assert_lines "$out" 3 "pretty nquads: 3 graphless statements"
+assert_not_contains "$out" "file://" "pretty nquads: graphless remains graphless"
+
+out=$($CLI read "$DATA/bob-likes-alice.ttl" \
+  | $CLI graph-assign urn:batch \
+  | $CLI pretty --format nquads)
+assert_contains "$out" "<urn:batch>" "pretty nquads: named graph preserved"
+
+out=$($CLI read "$DATA/bob-likes-alice.ttl" \
+  | $CLI graph-assign urn:batch \
+  | $CLI pretty --format ntriples)
+assert_not_contains "$out" "urn:batch" "pretty ntriples: graph dropped by format"
+assert_lines "$out" 3 "pretty ntriples: 3 triples"
 
 printf '\nprefixes autodiscovery\n'
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { readFromGlob, streamFileQuads } from '../src/sources/glob.js'
+import { readFromGlob, readFromPaths, streamFileQuads } from '../src/sources/glob.js'
 
 const FIXTURES = fileURLToPath(new URL('./fixtures', import.meta.url))
 
@@ -68,13 +68,20 @@ test('readFromGlob calls onError for a file that fails to parse', async () => {
   const errors = []
   const quads = await collect(
     readFromGlob(
-      [`${FIXTURES}/person-valid.ttl`, `${FIXTURES}/person-valid.ttl`],
+      [`${FIXTURES}/person-valid.ttl`, `${FIXTURES}/../../examples/data/with-errors/alice-cat.md`],
       {
-        format: 'application/ld+json', // wrong format → parse error
         onError: (file, err) => errors.push({ file, err }),
       },
     ),
   )
-  assert.equal(quads.length, 0)
-  assert.equal(errors.length, 2)
+  assert.equal(quads.length, 3)
+  assert.equal(errors.length, 1)
+  assert.match(String(errors[0].err), /unknown format/)
+})
+
+test('readFromPaths yields quads from stdin-supplied file paths', async () => {
+  const quads = await collect(
+    readFromPaths([`${FIXTURES}/person-valid.ttl`, `${FIXTURES}/person-invalid.ttl`]),
+  )
+  assert.ok(quads.length > 3)
 })

@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty'
-import { NQUADS, resolveFormat } from '../formats.js'
+import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { toReadable, writeQuads } from '../sinks/quads.js'
 import { assignGraph } from '../transforms/assignGraph.js'
@@ -13,11 +13,6 @@ export default defineCommand({
   },
   args: {
     graph: { type: 'positional', description: 'Named graph IRI' },
-    format: {
-      type: 'string',
-      alias: 'f',
-      description: 'Input format (default: n-quads)',
-    },
   },
   async run ({ args }) {
     if (!args.graph) {
@@ -25,7 +20,7 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const source = await readFromStdin(resolveFormat(args.format) || NQUADS)
+    const source = await readFromStdin(NQUADS)
     await writeQuads(toReadable(source).pipe(assignGraph(args.graph)))
   },
 })

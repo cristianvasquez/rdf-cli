@@ -21,8 +21,8 @@ The executable is `rdf`.
 
 ## Stream kinds
 
-- `glob` produces a path stream
-- `read`, `from-paths`, and `from-stdin` produce a dataset stream
+- `from-paths` produces a dataset stream from a path stream
+- `read` produces a dataset stream from file paths or stdin
 - `select` produces a bindings stream
 - `validate` keeps you in dataset space by appending a SHACL report graph
 - `table` and `pretty` are sinks to text
@@ -31,26 +31,18 @@ By default, graphless statements remain graphless. Graph assignment is explicit.
 
 ## Commands
 
-### `glob <pattern...>`
+### `read [path...]`
 
-Expand one or more globs and write one path per line.
-
-```bash
-rdf glob './data/**/*.ttl' './data/**/*.rdf'
-```
-
-### `read <path...>`
-
-Parse one or more RDF files given as arguments into a dataset stream. This is the direct shortcut for the common `glob | from-paths` pipeline when you already know the paths.
+Parse RDF into a dataset stream. With one or more path arguments, `read` expands the paths or globs and parses those files. With no arguments, it reads RDF bytes from stdin and auto-detects the input format.
 
 ```bash
 rdf read ./data/alice.ttl ./data/bob.ttl
+cat ./data/alice.ttl | rdf read
 ```
 
-Force an input format or assign file identity explicitly:
+Assign file identity explicitly for file inputs:
 
 ```bash
-rdf read --format turtle ./data/alice.ttl
 rdf read --graph-from path ./data/*.ttl | rdf pretty --format trig
 ```
 
@@ -59,21 +51,13 @@ rdf read --graph-from path ./data/*.ttl | rdf pretty --format trig
 Read one path per line from stdin and parse RDF files into a dataset stream.
 
 ```bash
-rdf glob './data/**/*.ttl' './data/**/*.rdf' | rdf from-paths
+find ./data -type f \( -name '*.ttl' -o -name '*.rdf' \) | rdf from-paths
 ```
 
 Assign file identity explicitly when wanted:
 
 ```bash
-rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path
-```
-
-### `from-stdin`
-
-Parse RDF bytes from stdin into a dataset stream.
-
-```bash
-curl https://example.org/data.ttl | rdf from-stdin --format turtle
+find ./data -type f -name '*.ttl' | rdf from-paths --graph-from path
 ```
 
 ### `select <query>`
@@ -81,8 +65,7 @@ curl https://example.org/data.ttl | rdf from-stdin --format turtle
 Run a SPARQL `SELECT` over a dataset stream and emit a bindings stream as JSON Lines.
 
 ```bash
-rdf glob './data/**/*.ttl' \
-  | rdf from-paths \
+rdf read ./data/**/*.ttl \
   | rdf select 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }'
 ```
 
@@ -91,8 +74,7 @@ rdf glob './data/**/*.ttl' \
 Render a bindings stream as CSV, TSV, or JSON Lines.
 
 ```bash
-rdf glob './data/**/*.ttl' \
-  | rdf from-paths \
+rdf read ./data/**/*.ttl \
   | rdf select 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }' \
   | rdf table
 ```
@@ -102,8 +84,7 @@ rdf glob './data/**/*.ttl' \
 Run a SPARQL `CONSTRUCT` over a dataset stream and stay in dataset space.
 
 ```bash
-rdf glob './data/**/*.ttl' \
-  | rdf from-paths \
+rdf read ./data/**/*.ttl \
   | rdf construct 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' \
   | rdf pretty
 ```
@@ -113,8 +94,7 @@ rdf glob './data/**/*.ttl' \
 Validate a dataset stream against custom or built-in SHACL shapes. The original data stays in the stream and the validation report is appended as a named graph.
 
 ```bash
-rdf glob './data.ttl' \
-  | rdf from-paths \
+rdf read ./data.ttl \
   | rdf validate --shapes './shapes.ttl' \
   | rdf pretty --format trig
 ```
@@ -122,8 +102,7 @@ rdf glob './data.ttl' \
 Use bundled shapes when they are standard enough to deserve a first-class shortcut:
 
 ```bash
-rdf glob './vocab.ttl' \
-  | rdf from-paths \
+rdf read ./vocab.ttl \
   | rdf validate --builtin skos --markdown-report
 ```
 
@@ -132,8 +111,7 @@ rdf glob './vocab.ttl' \
 Assign a named graph to graphless statements.
 
 ```bash
-rdf glob './data/**/*.ttl' \
-  | rdf from-paths \
+rdf read ./data/**/*.ttl \
   | rdf graph-assign urn:batch \
   | rdf pretty --format trig
 ```
@@ -143,32 +121,24 @@ rdf glob './data/**/*.ttl' \
 Drop graph terms while staying in dataset space.
 
 ```bash
-rdf glob './data/**/*.ttl' \
-  | rdf from-paths --graph-from path \
+rdf read --graph-from path ./data/**/*.ttl \
   | rdf graph-drop \
   | rdf pretty
 ```
 
-### `serialize`
-
-Serialize a dataset stream as N-Quads or N-Triples.
-
-```bash
-rdf glob './data/**/*.ttl' | rdf from-paths | rdf serialize > bundle.nq
-rdf glob './data/**/*.ttl' | rdf from-paths | rdf serialize --format ntriples > bundle.nt
-```
-
 ### `pretty`
 
-Pretty-print a dataset stream as Turtle or TriG.
+Render a dataset stream as TriG, Turtle, N-Quads, or N-Triples.
 
 ```bash
-rdf glob './data/**/*.ttl' | rdf from-paths | rdf pretty
-rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path | rdf pretty
-rdf glob './data/**/*.ttl' | rdf from-paths --graph-from path | rdf pretty --format turtle
+rdf read ./data/**/*.ttl | rdf pretty
+rdf read --graph-from path ./data/**/*.ttl | rdf pretty
+rdf read --graph-from path ./data/**/*.ttl | rdf pretty --format turtle
+rdf read ./data/**/*.ttl | rdf pretty --format nquads > bundle.nq
+rdf read ./data/**/*.ttl | rdf pretty --format ntriples > bundle.nt
 ```
 
-`pretty` defaults to TriG so named graphs are preserved. `pretty --format turtle` forces Turtle output and drops graph assignments.
+`pretty` defaults to TriG so named graphs are preserved. `pretty --format turtle` and `pretty --format ntriples` drop graph assignments because those formats cannot encode named graphs.
 
 Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--prefixes <file>`.
 
@@ -188,7 +158,7 @@ bash examples/trig-bundle.sh
 ## TODO
 
 - Clarify the contract between "dataset stream" as an abstract stream kind and what actually flows through a Unix pipe. Agents need the docs to say explicitly when stdin/stdout carry serialized RDF bytes such as N-Quads versus an internal conceptual stream.
-- Document the canonical accepted values for `--format` and `--input-format`, plus aliases and MIME types. The current docs make tokens like `nquads` versus `n-quads` too easy to guess wrong.
-- Make command help and examples consistent about whether a flag controls input parsing or output serialization. Several commands use `--format` for different roles, which is easy for agents to misread.
+- Document the canonical accepted values for sink `--format`, plus aliases and MIME types. The current docs make tokens like `nquads` versus `n-quads` too easy to guess wrong.
+- Make command help and examples consistent about sink output serialization and the `read`/`from-paths` source split.
 - Add one end-to-end example that starts with N-Quads on stdin and ends with `rdf pretty --format trig`, with the exact working flags shown.
 - Add an "agent readability" pass to the CLI docs: each command should state expected stdin kind, stdout kind, default wire format, accepted format aliases, and one minimal copy-pastable example.

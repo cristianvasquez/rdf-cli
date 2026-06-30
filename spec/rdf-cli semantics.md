@@ -37,17 +37,10 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - `validate` remains in dataset space: it appends SHACL report statements in a named report graph while preserving the input data stream.
 - `graph-assign <iri>` assigns a named graph to graphless statements and preserves existing named graphs.
 - `graph-drop` removes graph terms while staying in dataset space.
-- `serialize` preserves the input dataset semantics in the requested serialization, subject to the target format's ability to encode graphs.
 - `pretty` defaults to TriG so named graphs are preserved.
 - `pretty --format turtle` forces Turtle output and drops graph assignments because Turtle cannot encode named graphs.
 
 ## Input semantics by command
-
-### `glob`
-
-- Reads one or more glob patterns from command arguments.
-- Writes a path stream on stdout using one path per line.
-- `glob` is not an RDF command; it is a path source.
 
 ### `from-paths`
 
@@ -56,17 +49,17 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - By default, graphless statements remain graphless.
 - `--graph-from path` assigns a file-derived graph only to graphless statements from that file.
 
-### `from-stdin`
+### `read`
 
-- Reads RDF bytes from stdin.
-- Stdin format is auto-detected when possible, or can be forced with `--format`.
-- Emits a dataset stream encoded as N-Quads.
-- Graphless statements remain graphless.
+- With one or more path arguments, expands each path or glob and parses the matched RDF files.
+- With no path arguments, reads RDF bytes from stdin and auto-detects the format.
+- Emits one combined dataset stream encoded as N-Quads.
+- By default, graphless statements remain graphless.
+- `--graph-from path` is supported only for file inputs and assigns a file-derived graph only to graphless statements from that file.
 
 ### `select`
 
 - Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- `--format` may override the stdin parser format.
 - Executes the supplied SPARQL SELECT query against the full dataset.
 - Writes a bindings stream as JSON Lines.
 
@@ -79,7 +72,6 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 ### `construct`
 
 - Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- `--format` may override the stdin parser format.
 - Executes the supplied SPARQL CONSTRUCT query against the full dataset.
 - Writes the constructed dataset on stdout using N-Quads as the default encoding.
 - The constructed output may contain graphless statements, named graphs, or both.
@@ -103,17 +95,11 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - Removes graph terms from all statements.
 - Writes a dataset stream encoded as N-Quads.
 
-### `serialize`
-
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- `--format` chooses the output serialization.
-- Output defaults to N-Quads.
-- Serializing to a triples-only format drops graph information because the target format cannot encode it.
-
 ### `pretty`
 
 - Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- `--input-format` may override the stdin parser format.
 - `--format trig` produces pretty TriG and preserves named graphs. This is the default.
 - `--format turtle` produces pretty Turtle and drops graph assignments because Turtle cannot encode named graphs.
-- `pretty` is a sink: it renders the dataset stream for humans rather than preserving a machine-oriented RDF pipe format.
+- `--format nquads` produces machine-oriented N-Quads and preserves named graphs.
+- `--format ntriples` produces machine-oriented N-Triples and drops graph assignments because N-Triples cannot encode named graphs.
+- `pretty` is a sink: it renders the dataset stream in a caller-selected output format, including both human-oriented and machine-oriented serializations.

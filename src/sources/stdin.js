@@ -12,7 +12,7 @@ export async function readFromStdin (hintFormat) {
   const buffer = await getStreamAsBuffer(process.stdin)
   const fmt = detectFormat(buffer.toString('utf8', 0, 500))
   if (!fmt) {
-    process.stderr.write('error: cannot detect stdin format — use --format\n')
+    process.stderr.write('error: cannot detect stdin format\n')
     process.exit(1)
   }
   return formats.parsers.import(fmt, Readable.from([buffer]))

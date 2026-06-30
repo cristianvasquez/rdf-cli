@@ -3,10 +3,12 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import rdf from 'rdf-ext'
+import { writeQuads } from './quads.js'
+import { dropGraph } from '../transforms/dropGraph.js'
 import { collectDataset } from '../utils.js'
-import { TRIG, TURTLE } from '../formats.js'
+import { NQUADS, NTRIPLES, TRIG, TURTLE } from '../formats.js'
 
-export { TRIG, TURTLE }
+export { NQUADS, NTRIPLES, TRIG, TURTLE }
 
 export async function loadPrefixes (prefixFile) {
   const candidates = [
@@ -101,6 +103,10 @@ export async function datasetToString (dataset, { format, prefixes }) {
 export async function writePretty (source, { format = TRIG, prefixes = {} } = {}) {
   const dataset = await collectDataset(source)
   try {
+    if (format === NQUADS || format === NTRIPLES) {
+      await writeQuads(format === NTRIPLES ? rdf.dataset([...dataset]).toStream().pipe(dropGraph()) : dataset, { format })
+      return
+    }
     process.stdout.write(await datasetToString(dataset, { format, prefixes }))
   } catch (error) {
     process.stderr.write(`error: ${error.message}\n`)

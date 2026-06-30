@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
 import { readFile } from 'node:fs/promises'
-import { NQUADS, resolveFormat } from '../formats.js'
+import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { writeBindings } from '../sinks/bindings.js'
 import { createSelectStream } from '../transforms/sparql.js'
@@ -19,11 +19,6 @@ export default defineCommand({
       type: 'string',
       description: 'Read SPARQL query from file instead',
     },
-    format: {
-      type: 'string',
-      alias: 'f',
-      description: 'Input format (default: n-quads)',
-    },
   },
   async run ({ args }) {
     const query = args['query-file']
@@ -34,7 +29,7 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const source = await readFromStdin(resolveFormat(args.format) || NQUADS)
+    const source = await readFromStdin(NQUADS)
     await writeBindings(await createSelectStream(source, query))
   },
 })
