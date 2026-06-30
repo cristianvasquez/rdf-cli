@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
 import { NQUADS } from '../formats.js'
-import { readFromStdin } from '../parse.js'
+import { readFromStdin } from '../sources/stdin.js'
 import { writeQuads } from '../sinks/quads.js'
 import { createValidateStream, formatMarkdownReport, resolveBuiltinShapes, summarizeReport } from '../transforms/shacl.js'
 

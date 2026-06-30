@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
 import { NQUADS, resolveFormat } from '../formats.js'
-import { readFromStdin } from '../parse.js'
+import { readFromStdin } from '../sources/stdin.js'
 import { toReadable, writeQuads } from '../sinks/quads.js'
 import { dropGraph } from '../transforms/dropGraph.js'
 

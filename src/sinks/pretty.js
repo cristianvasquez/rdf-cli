@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import rdf from 'rdf-ext'
-import { collectDataset } from '../parse.js'
+import { collectDataset } from '../utils.js'
 import { TRIG, TURTLE } from '../formats.js'
 
 export { TRIG, TURTLE }

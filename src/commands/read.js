@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
 import { resolveFormat } from '../formats.js'
-import { readFromGlob } from '../parse.js'
+import { readFromGlob } from '../sources/glob.js'
 import { writeQuads } from '../sinks/quads.js'
 
 export default defineCommand({

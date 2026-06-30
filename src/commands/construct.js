@@ -1,7 +1,7 @@
 import { defineCommand } from 'citty'
 import { readFile } from 'node:fs/promises'
 import { NQUADS, resolveFormat } from '../formats.js'
-import { readFromStdin } from '../parse.js'
+import { readFromStdin } from '../sources/stdin.js'
 import { writeQuads } from '../sinks/quads.js'
 import { createConstructStream } from '../transforms/sparql.js'
 

@@ -1,6 +1,6 @@
 import { defineCommand } from 'citty'
 import { NQUADS, TRIG, TURTLE, resolveFormat } from '../formats.js'
-import { readFromStdin } from '../parse.js'
+import { readFromStdin } from '../sources/stdin.js'
 import { loadPrefixes, writePretty } from '../sinks/pretty.js'
 
 export default defineCommand({

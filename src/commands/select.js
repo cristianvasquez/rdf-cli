@@ -1,19 +1,9 @@
 import { defineCommand } from 'citty'
 import { readFile } from 'node:fs/promises'
 import { NQUADS, resolveFormat } from '../formats.js'
-import { readFromStdin } from '../parse.js'
+import { readFromStdin } from '../sources/stdin.js'
+import { writeBindings } from '../sinks/bindings.js'
 import { createSelectStream } from '../transforms/sparql.js'
-
-function termValue (term) {
-  if (!term) return ''
-  if (term.termType === 'BlankNode') return `_:${term.value}`
-  return term.value
-}
-
-function bindingToJSONL (row) {
-  return `${JSON.stringify(Object.fromEntries(Object.entries(row).
-    map(([key, value]) => [key, termValue(value)])))}\n`
-}
 
 export default defineCommand({
   meta: {
@@ -44,8 +34,6 @@ export default defineCommand({
     }
 
     const source = await readFromStdin(resolveFormat(args.format) || NQUADS)
-    for (const row of await createSelectStream(source, query)) {
-      process.stdout.write(bindingToJSONL(row))
-    }
+    await writeBindings(await createSelectStream(source, query))
   },
 })
