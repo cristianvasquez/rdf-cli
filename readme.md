@@ -9,7 +9,7 @@ repo-group: rdf
 
 # [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-cli)
 
-A CLI-only toolkit to manipulate RDF.
+A mini-toolkit to manipulate RDF from the CLI or from application code.
 
 ## Install
 
@@ -18,6 +18,29 @@ npm install && npm link
 ```
 
 The executable is `rdf`.
+
+## Reuse As A Library
+
+The package now exposes only the pipeline building blocks as a public module surface, so other applications do not need to import internal files directly.
+
+```js
+import { sources, transforms, sinks } from 'rdf-cli'
+
+const source = sources.readFromGlob(['./data/**/*.ttl'], { graphFrom: 'path' })
+const rows = await transforms.createSelectStream(
+  source,
+  'SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }',
+)
+
+for await (const row of rows) {
+  console.log(row.s.value, row.p.value, row.o.value)
+}
+
+const trig = await sinks.datasetToString(dataset, {
+  format: sinks.TRIG,
+  prefixes: {},
+})
+```
 
 ## Stream kinds
 

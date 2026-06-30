@@ -1,8 +1,17 @@
 {
   "name": "rdf-cli",
   "version": "0.2.2",
-  "description": "CLI-only RDF stream processing toolkit",
+  "description": "RDF stream processing toolkit with a CLI and reusable pipeline components",
   "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./cli": "./src/cli.js",
+    "./commands": "./src/commands/index.js",
+    "./sources": "./src/sources/index.js",
+    "./transforms": "./src/transforms/index.js",
+    "./sinks": "./src/sinks/index.js",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "rdf": "./bin/rdf.js"
   },
