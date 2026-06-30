@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty'
-import { readFromGlob } from '../sources/glob.js'
+import { readFromGlob } from '../sources/paths.js'
 import { writeQuads } from '../sinks/quads.js'
 import { readFromStdin } from '../sources/stdin.js'
 
@@ -8,10 +8,9 @@ export default defineCommand({
   meta: {
     name: 'read',
     description:
-      'Parse RDF from file paths or stdin into an N-Quads dataset stream. ' +
-      'With one or more path arguments, each path or glob is expanded and parsed. ' +
-      'With no arguments, RDF bytes are read from stdin and auto-detected. ' +
-      'Graphless triples remain in the default graph unless --graph-from path is set for file inputs.',
+      'Read RDF from file paths or stdin and emit an N-Quads dataset stream. ' +
+      'With path arguments, each path or glob is expanded and parsed. ' +
+      'With no arguments, RDF bytes are read from stdin and auto-detected.',
   },
   args: {
     'graph-from': {

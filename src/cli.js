@@ -14,7 +14,7 @@ const main = defineCommand({
     name: 'rdf',
     version: '0.2.2',
     description:
-      'RDF stream algebra CLI. Commands communicate via N-Quads streams on stdin/stdout.',
+      'RDF CLI with `read` as the default source, N-Quads between transforms, and sink-selected output formats.',
   },
   subCommands: {
     read,

@@ -9,7 +9,7 @@ export default defineCommand({
   meta: {
     name: 'graph-assign',
     description:
-      'Assign a named graph to graphless statements. Applies a single fixed IRI to every default-graph quad in the stream; quads already in a named graph are passed through unchanged. For dynamic graph assignment based on a predicate value, use construct with a WHERE clause.',
+      'Read an N-Quads dataset stream from stdin and assign a named graph to graphless statements.',
   },
   args: {
     graph: { type: 'positional', description: 'Named graph IRI' },

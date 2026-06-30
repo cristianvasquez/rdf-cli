@@ -8,9 +8,9 @@ export default defineCommand({
   io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'graph-drop',
-    description: 'Drop graph terms — move all quads into the default graph.',
+    description: 'Read an N-Quads dataset stream from stdin and drop graph terms.',
   },
-  async run ({ args }) {
+  async run () {
     const source = await readFromStdin(NQUADS)
     await writeQuads(toReadable(source).pipe(dropGraph()))
   },

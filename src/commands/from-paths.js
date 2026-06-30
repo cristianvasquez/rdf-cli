@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty'
-import { readFromPaths } from '../sources/glob.js'
+import { readFromPaths } from '../sources/paths.js'
 import { writeQuads } from '../sinks/quads.js'
 import { readLines } from '../utils.js'
 
@@ -8,7 +8,7 @@ export default defineCommand({
   meta: {
     name: 'from-paths',
     description:
-      'Read one path per line from stdin, parse matched RDF files, and emit an N-Quads dataset stream.',
+      'Read one file path per line from stdin and emit an N-Quads dataset stream.',
   },
   args: {
     'graph-from': {

@@ -10,8 +10,7 @@ export default defineCommand({
   meta: {
     name: 'select',
     description:
-      'SPARQL SELECT on dataset stream stdin → bindings stream (JSON Lines). ' +
-      'Reads N-Quads from stdin by default. GRAPH patterns are supported (SPARQL 1.1).',
+      'Read an N-Quads dataset stream from stdin, run SPARQL SELECT, and emit JSON Lines bindings.',
   },
   args: {
     query: { type: 'positional', description: 'SPARQL SELECT query string' },

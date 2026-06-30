@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { readFromGlob, readFromPaths, streamFileQuads } from '../src/sources/glob.js'
+import { readFromGlob, readFromPaths, streamFileQuads } from '../src/sources/paths.js'
 
 const FIXTURES = fileURLToPath(new URL('./fixtures', import.meta.url))
 

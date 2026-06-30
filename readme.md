@@ -21,8 +21,8 @@ The executable is `rdf`.
 
 ## Stream kinds
 
-- `from-paths` produces a dataset stream from a path stream
-- `read` produces a dataset stream from file paths or stdin
+- `read` is the default RDF source: it produces a dataset stream from file paths or stdin
+- `from-paths` is the path-stream bridge: it produces a dataset stream from one path per stdin line
 - `select` produces a bindings stream
 - `validate` keeps you in dataset space by appending a SHACL report graph
 - `table` and `pretty` are sinks to text
@@ -48,7 +48,7 @@ rdf read --graph-from path ./data/*.ttl | rdf pretty --format trig
 
 ### `from-paths`
 
-Read one path per line from stdin and parse RDF files into a dataset stream.
+Read one path per line from stdin and parse RDF files into a dataset stream. Use this when another shell command is already producing the paths.
 
 ```bash
 find ./data -type f \( -name '*.ttl' -o -name '*.rdf' \) | rdf from-paths
@@ -159,6 +159,6 @@ bash examples/trig-bundle.sh
 
 - Clarify the contract between "dataset stream" as an abstract stream kind and what actually flows through a Unix pipe. Agents need the docs to say explicitly when stdin/stdout carry serialized RDF bytes such as N-Quads versus an internal conceptual stream.
 - Document the canonical accepted values for sink `--format`, plus aliases and MIME types. The current docs make tokens like `nquads` versus `n-quads` too easy to guess wrong.
-- Make command help and examples consistent about sink output serialization and the `read`/`from-paths` source split.
+- Make `read` the obvious default source in every command help block and example set, while keeping `from-paths` for explicit path-stream pipelines.
 - Add one end-to-end example that starts with N-Quads on stdin and ends with `rdf pretty --format trig`, with the exact working flags shown.
 - Add an "agent readability" pass to the CLI docs: each command should state expected stdin kind, stdout kind, default wire format, accepted format aliases, and one minimal copy-pastable example.

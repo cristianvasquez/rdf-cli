@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 import Validator from 'shacl-engine/Validator.js'
-import { streamFileQuads } from '../sources/glob.js'
+import { streamFileQuads } from '../sources/paths.js'
 import { collectDataset } from '../utils.js'
 
 const BUILTIN_SHAPES = {

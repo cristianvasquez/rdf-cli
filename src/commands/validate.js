@@ -10,7 +10,7 @@ export default defineCommand({
   io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'validate',
-    description: 'Validate a dataset stream against SHACL shapes',
+    description: 'Read an N-Quads dataset stream from stdin, validate it against SHACL shapes, and emit N-Quads.',
   },
   args: {
     shapes: {

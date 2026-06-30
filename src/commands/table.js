@@ -5,7 +5,7 @@ export default defineCommand({
   io: { stdin: 'JSONLinesBindings', stdout: 'Text' },
   meta: {
     name: 'table',
-    description: 'Render bindings stream as CSV, TSV, or JSON Lines',
+    description: 'Read JSON Lines bindings from stdin and render CSV, TSV, or JSON Lines.',
   },
   args: {
     format: {

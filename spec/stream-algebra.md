@@ -70,8 +70,9 @@ Commands should fit one of these roles.
 
 - Produce a stream from command arguments or external input.
 - Examples:
+  - `rdf read` from file paths or stdin to dataset stream
   - shell path expansion to path stream
-  - parse stdin bytes to dataset stream
+  - `rdf from-paths` from path stream to dataset stream
 
 ### Transforms
 
@@ -181,11 +182,13 @@ These primitives are enough to make the system feel like lego pieces.
 - Parses each path independently.
 - Preserves graphless statements unless configured otherwise.
 - If graph identity should be derived from file identity, that must happen here through an explicit option such as `--graph-from path`.
+- This is the advanced bridge for shell-generated path streams.
 
 ### `rdf read`
 
 - Input: file paths as arguments, or byte stream on stdin
 - Output: dataset stream
+- This is the default RDF source command.
 
 ### `rdf construct`
 

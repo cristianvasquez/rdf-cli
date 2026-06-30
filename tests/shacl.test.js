@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import { createValidateStream } from '../src/transforms/shacl.js'
-import { streamFileQuads } from '../src/sources/glob.js'
+import { streamFileQuads } from '../src/sources/paths.js'
 
 const fixturesDir = fileURLToPath(new URL('./fixtures', import.meta.url))
 const shapesFile = `${fixturesDir}/person-shape.ttl`

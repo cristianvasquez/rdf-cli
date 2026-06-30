@@ -48,6 +48,7 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - Parses each path independently and emits one combined dataset stream encoded as N-Quads.
 - By default, graphless statements remain graphless.
 - `--graph-from path` assigns a file-derived graph only to graphless statements from that file.
+- `from-paths` is an explicit bridge from shell path pipelines into the RDF dataset pipeline.
 
 ### `read`
 
@@ -56,6 +57,7 @@ This document defines the semantic contract of `rdf` inputs and outputs.
 - Emits one combined dataset stream encoded as N-Quads.
 - By default, graphless statements remain graphless.
 - `--graph-from path` is supported only for file inputs and assigns a file-derived graph only to graphless statements from that file.
+- `read` is the default RDF source command.
 
 ### `select`
 
