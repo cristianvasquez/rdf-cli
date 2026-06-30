@@ -149,6 +149,24 @@ rdf read --graph-from path ./data/**/*.ttl \
   | rdf pretty
 ```
 
+### `skolem`
+
+Replace blank nodes with generated IRIs while staying in dataset space.
+
+```bash
+rdf read ./data/**/*.ttl \
+  | rdf skolem \
+  | rdf pretty --format nquads
+```
+
+Use a custom base IRI when you need stable local naming policy:
+
+```bash
+rdf read ./data/**/*.ttl \
+  | rdf skolem --base-iri https://example.org/.well-known/genid \
+  | rdf pretty --format nquads
+```
+
 ### `pretty`
 
 Render a dataset stream as TriG, Turtle, N-Quads, or N-Triples.

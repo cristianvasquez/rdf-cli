@@ -7,6 +7,7 @@ import { sinks, sources, transforms } from 'rdf-cli'
 test('public api exposes namespace exports', () => {
   assert.equal(typeof sources.readFromGlob, 'function')
   assert.equal(typeof transforms.createSelectStream, 'function')
+  assert.equal(typeof transforms.skolemize, 'function')
   assert.equal(typeof sinks.datasetToString, 'function')
 })
 

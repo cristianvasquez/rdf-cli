@@ -140,6 +140,12 @@ out=$($CLI read --graph-from path "$DATA/bob-likes-alice.ttl" \
 assert_contains "$out" "Bob" "graph-drop | pretty: renders after dropping graphs"
 assert_not_contains "$out" "file://" "graph-drop: file graph removed"
 
+out=$(printf '_:a <http://example.org/p> _:b .\n_:a <http://example.org/q> <http://example.org/o> .\n' \
+  | $CLI skolem --base-iri https://example.org/.well-known/genid \
+  | $CLI pretty --format nquads)
+assert_contains "$out" "https://example.org/.well-known/genid/" "skolem: generated IRIs use requested base"
+assert_not_contains "$out" "_:" "skolem: blank nodes replaced"
+
 out=$($CLI read --graph-from path "$DATA/bob-likes-alice.ttl" \
   | $CLI pretty)
 assert_contains "$out" "file://" "pretty default: named graph shown as TriG"
