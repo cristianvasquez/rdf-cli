@@ -13,7 +13,10 @@ export default defineCommand({
       'Read an N-Quads dataset stream from stdin, run SPARQL SELECT, and emit JSON Lines bindings.',
   },
   args: {
-    query: { type: 'positional', description: 'SPARQL SELECT query string' },
+    query: {
+      type: 'positional',
+      description: 'SPARQL SELECT query string',
+    },
     'query-file': {
       type: 'string',
       description: 'Read SPARQL query from file instead',
@@ -27,7 +30,6 @@ export default defineCommand({
       process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
       process.exit(1)
     }
-
     const source = await readFromStdin(NQUADS)
     await writeBindings(await createSelectStream(source, query))
   },

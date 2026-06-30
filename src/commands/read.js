@@ -4,13 +4,13 @@ import { writeQuads } from '../sinks/quads.js'
 import { readFromStdin } from '../sources/stdin.js'
 
 export default defineCommand({
-  io: { stdin: 'RDFBytes', stdout: 'NQuads' },
+  io: { stdin: 'RDF', stdout: 'NQuads' },
   meta: {
     name: 'read',
     description:
       'Read RDF from file paths or stdin and emit an N-Quads dataset stream. ' +
       'With path arguments, each path or glob is expanded and parsed. ' +
-      'With no arguments, RDF bytes are read from stdin and auto-detected.',
+      'With no arguments, serialized RDF is read from stdin and auto-detected.',
   },
   args: {
     'graph-from': {

@@ -4,11 +4,13 @@ import { join } from 'node:path'
 import rdf from 'rdf-ext'
 import { writeQuads } from '../src/sinks/quads.js'
 import { command } from '../src/cli.js'
+import { NQUADS, NTRIPLES, TRIG, TURTLE } from '../src/formats.js'
 
 const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
 const packageName = pkg.name ?? 'unknown'
 
 const cli = rdf.namespace('urn:rdf-cli:cli#')
+const mt = rdf.namespace('urn:rdf-cli:media-type#')
 const npm = rdf.namespace('https://www.npmjs.com/package/')
 const inst = rdf.namespace(`https://www.npmjs.com/package/${packageName}#`)
 const xsd = rdf.namespace('http://www.w3.org/2001/XMLSchema#')
@@ -19,6 +21,66 @@ const lit = (v) => rdf.literal(String(v))
 const boolLit = (v) => rdf.literal(String(v), xsd.boolean)
 
 const iri = (path) => inst[path.join('/')]
+const mediaTypeIri = (value) => mt[encodeURIComponent(value)]
+
+const MEDIA_TYPES = {
+  rdf: [
+    'application/ld+json',
+    'application/rdf+xml',
+    NQUADS,
+    NTRIPLES,
+    TRIG,
+    TURTLE,
+    'text/n3',
+  ],
+  nquads: [NQUADS],
+  text: ['text/plain'],
+  jsonLinesBindings: ['application/x-ndjson'],
+}
+
+async function* mediaTypeQuads () {
+  for (const value of new Set(Object.values(MEDIA_TYPES).flat())) {
+    const iri = mediaTypeIri(value)
+    yield rdf.quad(iri, rdfType, cli.MediaType)
+    yield rdf.quad(iri, rdfs.label, lit(value))
+  }
+}
+
+async function* streamTypeQuads () {
+  yield rdf.quad(cli.RDF, rdfType, cli.StreamType)
+  yield rdf.quad(cli.RDF, rdfs.label, lit('RDF'))
+  yield rdf.quad(
+    cli.RDF,
+    rdfs.comment,
+    lit('Serialized RDF on a byte stream. Individual commands support subsets of the listed media types.'),
+  )
+  for (const value of MEDIA_TYPES.rdf) {
+    yield rdf.quad(cli.RDF, cli.supportsMediaType, mediaTypeIri(value))
+  }
+
+  yield rdf.quad(cli.NQuads, rdfType, cli.StreamType)
+  yield rdf.quad(cli.NQuads, rdfs.label, lit('NQuads'))
+  yield rdf.quad(cli.NQuads, rdfs.comment, lit('Normalized internal RDF dataset stream encoded as N-Quads.'))
+  yield rdf.quad(cli.NQuads, cli.supportsMediaType, mediaTypeIri(MEDIA_TYPES.nquads[0]))
+
+  yield rdf.quad(cli.Text, rdfType, cli.StreamType)
+  yield rdf.quad(cli.Text, rdfs.label, lit('Text'))
+  yield rdf.quad(cli.Text, rdfs.comment, lit('Plain text stream.'))
+  yield rdf.quad(cli.Text, cli.supportsMediaType, mediaTypeIri(MEDIA_TYPES.text[0]))
+
+  yield rdf.quad(cli.JSONLinesBindings, rdfType, cli.StreamType)
+  yield rdf.quad(cli.JSONLinesBindings, rdfs.label, lit('JSONLinesBindings'))
+  yield rdf.quad(
+    cli.JSONLinesBindings,
+    rdfs.comment,
+    lit('SPARQL SELECT bindings encoded as one JSON object per line.'),
+  )
+  yield rdf.quad(
+    cli.JSONLinesBindings,
+    cli.supportsMediaType,
+    mediaTypeIri(MEDIA_TYPES.jsonLinesBindings[0]),
+  )
+}
 
 async function* packageQuads () {
   const pkgIri = npm(packageName)
@@ -70,6 +132,8 @@ async function* commandQuads (cmd, path) {
 
 async function* manifest () {
   yield* packageQuads()
+  yield* mediaTypeQuads()
+  yield* streamTypeQuads()
   const rootName = command.meta?.name ?? packageName
   const pkgIri = npm(packageName)
   const rootIri = iri([rootName])

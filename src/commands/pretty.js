@@ -4,7 +4,7 @@ import { readFromStdin } from '../sources/stdin.js'
 import { loadPrefixes, writePretty } from '../sinks/pretty.js'
 
 export default defineCommand({
-  io: { stdin: 'NQuads', stdout: 'RDFBytes' },
+  io: { stdin: 'NQuads', stdout: 'RDF' },
   meta: {
     name: 'pretty',
     description: 'Read an N-Quads dataset stream from stdin and render TriG, Turtle, N-Quads, or N-Triples.',
