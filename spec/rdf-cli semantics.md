@@ -1,107 +1,49 @@
 ---
 uuid: 4d701c7f-30fd-4d11-8939-c8fe72629e3f
 repo-group: rdf
-tldr: defines the semantic contract of `rdf` inputs and outputs.
+tldr: semantic contract for `rdf` command inputs and outputs.
 tags: [spec/rdf]
 ---
 
 # rdf semantics
 
-This document defines the semantic contract of `rdf` inputs and outputs.
+This document defines the current command contract for `rdf`.
 
-## Core model
+## Core rules
 
-- Commands communicate over stdout using streams with explicit semantic kinds.
-- The semantic center of the RDF pipeline is a dataset stream.
-- A dataset stream is a sequence of RDF statements interpreted under dataset semantics.
-- At the carrier level, dataset-stream items may be represented as RDFJS `Quad` values.
-- A statement may use the RDF default graph or a named graph.
-- Graphless statements must be preserved as graphless unless a command explicitly changes graph policy.
-- A command either reads RDF from stdin, reads files named on the command line, or both as explicitly documented.
-- Errors go to stderr. Valid inputs should still produce output when another input in the same invocation fails.
-
-## Stream kinds
-
-- `rdf` primarily works with dataset streams.
-- Some commands are sinks that render dataset streams as text.
-- `select` is different: it consumes a dataset stream and emits tabular bindings, not RDF.
-- `validate` is a dataset -> dataset transform that appends a report graph.
-
-## Graph semantics
-
-- The pipeline model is dataset-first, not quad-first.
-- Triples and quads are both first-class at the semantic level.
-- Commands preserve graph presence or absence unless their purpose is to change graph policy.
-- `select` and `construct` operate on the graphs present in their stdin dataset.
-- `construct` remains in dataset space: it emits RDF statements, which may be graphless, named, or mixed.
-- `validate` remains in dataset space: it appends SHACL report statements in a named report graph while preserving the input data stream.
-- `graph-assign <iri>` assigns a named graph to graphless statements and preserves existing named graphs.
-- `graph-drop` removes graph terms while staying in dataset space.
-- `pretty` defaults to TriG so named graphs are preserved.
-- `pretty --format turtle` forces Turtle output and drops graph assignments because Turtle cannot encode named graphs.
-
-## Input semantics by command
-
-### `from-paths`
-
-- Reads a path stream from stdin using one path per line.
-- Parses each path independently and emits one combined dataset stream encoded as N-Quads.
-- By default, graphless statements remain graphless.
-- `--graph-from path` assigns a file-derived graph only to graphless statements from that file.
-- `from-paths` is an explicit bridge from shell path pipelines into the RDF dataset pipeline.
-
-### `read`
-
-- With one or more path arguments, expands each path or glob and parses the matched RDF files.
-- With no path arguments, reads RDF bytes from stdin and auto-detects the format.
-- Emits one combined dataset stream encoded as N-Quads.
-- By default, graphless statements remain graphless.
-- `--graph-from path` is supported only for file inputs and assigns a file-derived graph only to graphless statements from that file.
 - `read` is the default RDF source command.
+- `from-paths` is the bridge from a plain text path stream into the RDF pipeline.
+- Dataset-producing commands communicate over stdin/stdout as N-Quads.
+- Graphless statements stay graphless unless a command explicitly changes graph policy.
+- `select` exits RDF space and emits bindings as JSON Lines.
+- `table` and `pretty` are sinks.
+- Errors go to stderr. When possible, valid inputs still produce output even if another input fails.
 
-### `select`
+## Commands
 
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- Executes the supplied SPARQL SELECT query against the full dataset.
-- Writes a bindings stream as JSON Lines.
+| Command | Input | Output | Notes |
+| --- | --- | --- | --- |
+| `read` | file paths as args, or RDF bytes on stdin when no paths are given | dataset stream as N-Quads | Expands file globs. Auto-detects stdin RDF format. `--graph-from path` is only for file inputs. |
+| `from-paths` | one file path per stdin line | dataset stream as N-Quads | Parses each path independently. Preserves graphless statements by default. Supports `--graph-from path`. |
+| `select` | dataset stream as N-Quads on stdin | bindings stream as JSON Lines | Runs a SPARQL `SELECT` over the full dataset. |
+| `table` | bindings stream as JSON Lines on stdin | text | Sink. `--format csv|tsv|jsonl`. |
+| `construct` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Runs a SPARQL `CONSTRUCT`. Output is currently graphless because the engine does not support `GRAPH` in the construct template. |
+| `validate` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Validates against custom or built-in SHACL shapes. Appends the report in a named graph. Exits with code `1` on non-conformance. |
+| `graph-assign` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Rewrites graphless statements into the supplied named graph. Preserves existing named graphs. |
+| `graph-drop` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Removes graph terms from all statements. |
+| `pretty` | dataset stream as N-Quads on stdin | text or RDF bytes | Sink. `--format trig` is default and preserves named graphs. `turtle` and `ntriples` drop graph assignments. `nquads` preserves named graphs. |
 
-### `table`
+## Graph policy
 
-- Reads a bindings stream from stdin in JSON Lines form.
-- Renders it as CSV, TSV, or JSON Lines.
-- `table` is a sink from bindings space to text space.
+- Preserve graph presence or absence by default.
+- Use `graph-assign` to add named graphs explicitly.
+- Use `graph-drop` to remove graph terms explicitly.
+- Sink formats can also force graph loss when the target format cannot encode named graphs.
 
-### `construct`
+## Sink formats
 
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- Executes the supplied SPARQL CONSTRUCT query against the full dataset.
-- Writes the constructed dataset on stdout using N-Quads as the default encoding.
-- The constructed output may contain graphless statements, named graphs, or both.
-
-### `validate`
-
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- Loads shapes from `--shapes` and/or bundled shapes from `--builtin`.
-- Appends the validation report as a named graph while preserving the original input data.
-- Exits with code `1` when the report does not conform, but still writes data plus report to stdout.
-
-### `graph-assign`
-
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- Requires one graph IRI argument.
-- Rewrites graphless statements into that named graph and preserves existing named graphs.
-
-### `graph-drop`
-
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- Removes graph terms from all statements.
-- Writes a dataset stream encoded as N-Quads.
-
-### `pretty`
-
-- Reads dataset-stream input from stdin by default, using N-Quads as the default parser encoding.
-- `--format trig` produces pretty TriG and preserves named graphs. This is the default.
-- `--format turtle` produces pretty Turtle and drops graph assignments because Turtle cannot encode named graphs.
-- `--format nquads` produces machine-oriented N-Quads and preserves named graphs.
-- `--format ntriples` produces machine-oriented N-Triples and drops graph assignments because N-Triples cannot encode named graphs.
-- `pretty` is a sink: it renders the dataset stream in a caller-selected output format, including both human-oriented and machine-oriented serializations.
+- `pretty --format trig`: human-oriented, preserves named graphs
+- `pretty --format turtle`: human-oriented, drops graph assignments
+- `pretty --format nquads`: machine-oriented, preserves named graphs
+- `pretty --format ntriples`: machine-oriented, drops graph assignments
+- `table --format csv|tsv|jsonl`: bindings sink formats
