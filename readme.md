@@ -145,8 +145,7 @@ Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--p
 ## Examples
 
 ```bash
-bash examples/read-assets.sh
-bash examples/do-select.sh
+bash examples/hello-world.sh
 bash examples/do-construct.sh
 bash examples/trig-bundle.sh
 ```
