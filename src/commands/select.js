@@ -6,6 +6,7 @@ import { writeBindings } from '../sinks/bindings.js'
 import { createSelectStream } from '../transforms/sparql.js'
 
 export default defineCommand({
+  io: { stdin: 'NQuads', stdout: 'JSONLinesBindings' },
   meta: {
     name: 'select',
     description:

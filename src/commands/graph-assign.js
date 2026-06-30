@@ -5,6 +5,7 @@ import { toReadable, writeQuads } from '../sinks/quads.js'
 import { assignGraph } from '../transforms/assignGraph.js'
 
 export default defineCommand({
+  io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'graph-assign',
     description:

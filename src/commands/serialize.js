@@ -5,6 +5,7 @@ import { toReadable, writeQuads } from '../sinks/quads.js'
 import { dropGraph } from '../transforms/dropGraph.js'
 
 export default defineCommand({
+  io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'serialize',
     description: 'Serialize dataset stream as N-Quads or N-Triples',

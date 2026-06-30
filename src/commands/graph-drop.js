@@ -5,6 +5,7 @@ import { toReadable, writeQuads } from '../sinks/quads.js'
 import { dropGraph } from '../transforms/dropGraph.js'
 
 export default defineCommand({
+  io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'graph-drop',
     description: 'Drop graph terms — move all quads into the default graph.',

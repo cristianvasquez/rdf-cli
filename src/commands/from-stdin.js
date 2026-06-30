@@ -4,6 +4,7 @@ import { readFromStdin } from '../sources/stdin.js'
 import { writeQuads } from '../sinks/quads.js'
 
 export default defineCommand({
+  io: { stdin: 'RDFBytes', stdout: 'NQuads' },
   meta: {
     name: 'from-stdin',
     description: 'Parse RDF from stdin bytes → N-Quads stream on stdout',

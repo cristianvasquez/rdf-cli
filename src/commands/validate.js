@@ -7,6 +7,7 @@ import { createValidateStream, formatMarkdownReport, resolveBuiltinShapes, summa
 const DEFAULT_GRAPH = 'urn:validation-report'
 
 export default defineCommand({
+  io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'validate',
     description: 'Validate a dataset stream against SHACL shapes',

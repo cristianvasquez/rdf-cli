@@ -2,6 +2,7 @@ import { defineCommand } from 'citty'
 import { writeTable } from '../sinks/table.js'
 
 export default defineCommand({
+  io: { stdin: 'JSONLinesBindings', stdout: 'Text' },
   meta: {
     name: 'table',
     description: 'Render bindings stream as CSV, TSV, or JSON Lines',

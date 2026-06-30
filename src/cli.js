@@ -31,6 +31,8 @@ const main = defineCommand({
   },
 })
 
+export const command = main
+
 export function run () {
   runMain(main)
 }

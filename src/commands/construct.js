@@ -6,6 +6,7 @@ import { writeQuads } from '../sinks/quads.js'
 import { createConstructStream } from '../transforms/sparql.js'
 
 export default defineCommand({
+  io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'construct',
     description:

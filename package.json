@@ -16,7 +16,8 @@
   "scripts": {
     "test": "node --test tests/*.test.js && bash tests/smoke.sh",
     "test:js": "node --test tests/*.test.js",
-    "smoke": "bash tests/smoke.sh"
+    "smoke": "bash tests/smoke.sh",
+    "manifest": "node scripts/manifest.js"
   },
   "repository": {
     "type": "git",

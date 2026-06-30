@@ -4,6 +4,7 @@ import { readFromGlob } from '../sources/glob.js'
 import { writeQuads } from '../sinks/quads.js'
 
 export default defineCommand({
+  io: { stdin: 'None', stdout: 'NQuads' },
   meta: {
     name: 'read',
     description:
