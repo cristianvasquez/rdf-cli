@@ -1,4 +1,5 @@
 export { Value, pipe, emptyEnvelope, operation, Abort } from './core.js'
+export { provenanceToDataset } from './provenance.js'
 export {
   readPaths,
   readStdin,
