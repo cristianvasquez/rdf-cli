@@ -196,7 +196,7 @@ rdf read ./data/**/*.ttl \
   | rdf pretty --format nquads
 ```
 
-Use a custom base IRI when you need stable local naming policy:
+Use a custom base IRI when you need a consistent naming base for one run:
 
 ```bash
 rdf read ./data/**/*.ttl \

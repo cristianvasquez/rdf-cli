@@ -35,6 +35,7 @@ This note explains the design bias behind the CLI. For the actual command contra
   - `rdf validate`
   - `rdf graph-assign`
   - `rdf graph-drop`
+  - `rdf skolem`
 - Dataset to bindings:
   - `rdf select`
 - Sinks:

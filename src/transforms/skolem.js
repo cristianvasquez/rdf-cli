@@ -8,8 +8,8 @@ function randomId () {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
-// Replace blank nodes with stable generated IRIs under `baseIri`. The same blank
-// node maps to the same IRI within a single run.
+// Replace blank nodes with generated IRIs under `baseIri`. The same blank node
+// maps to the same IRI within a single run.
 export function skolemize (baseIri = DEFAULT_SKOLEM_BASE_IRI) {
   const base = baseIri.endsWith('/') ? baseIri : `${baseIri}/`
   const blankNodes = rdf.termMap()

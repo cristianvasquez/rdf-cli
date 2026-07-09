@@ -55,6 +55,7 @@ export async function validate (store, shapeSources, { reportGraph = 'urn:valida
   return {
     stream: Readable.from(quads, { objectMode: true }),
     summary: summarizeReport(report),
+    stats: { quadsIn: dataDataset.size, quadsOut: quads.length },
   }
 }
 

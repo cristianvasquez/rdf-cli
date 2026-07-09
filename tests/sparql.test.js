@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import rdf from 'rdf-ext'
-import { construct, materialize, select } from '../src/transforms/sparql.js'
+import { construct, getMaterializeStats, materialize, select } from '../src/transforms/sparql.js'
 
 const ex = (s) => rdf.namedNode(`http://example.org/${s}`)
 
@@ -18,6 +18,33 @@ async function collect (iterable) {
   for await (const item of iterable) results.push(item)
   return results
 }
+
+// --- materialize ---
+
+test('materialize records input, output, and dropped quad counts', async () => {
+  const originalWrite = process.stderr.write
+  let warning = ''
+  process.stderr.write = function (chunk, ..._args) {
+    warning += String(chunk)
+    return true
+  }
+
+  try {
+    const store = await materialize(quadsStream(
+      rdf.quad(ex('Alice'), ex('knows'), ex('Bob')),
+      rdf.quad(rdf.literal('bad subject'), ex('knows'), ex('Bob')),
+    ))
+
+    assert.deepEqual(getMaterializeStats(store), {
+      quadsIn: 2,
+      quadsOut: 1,
+      droppedIn: 1,
+    })
+    assert.match(warning, /dropped 1 quads/)
+  } finally {
+    process.stderr.write = originalWrite
+  }
+})
 
 // --- construct ---
 

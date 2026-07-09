@@ -8,6 +8,7 @@
 
 // --- Value: the heterogeneous payload flowing between operations ---
 export const Value = {
+  empty: () => ({ type: 'empty' }),
   quads: (stream) => ({ type: 'quads', stream }),
   store: (store) => ({ type: 'store', store }),
   bindings: (rows) => ({ type: 'bindings', rows }),
@@ -21,7 +22,7 @@ export function expectValue (value, type, op) {
   return value
 }
 
-export const emptyEnvelope = () => ({ value: null, history: [] })
+export const emptyEnvelope = () => ({ value: Value.empty(), history: [] })
 
 // --- Abort: a guard stops the pipeline by throwing this ---
 export class Abort extends Error {
@@ -37,7 +38,7 @@ export class Abort extends Error {
 // runs over the incoming envelope; the lift measures timing, mints an id, records
 // lineage (the previous result), and appends one OpResult to history.
 export function operation (kind, fn) {
-  return async (env) => {
+  return async (env = emptyEnvelope()) => {
     const startedAt = new Date().toISOString()
     const t0 = performance.now()
     const { value, meta = {} } = await fn(env)

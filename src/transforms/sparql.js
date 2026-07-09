@@ -2,6 +2,16 @@ import { Store } from 'oxigraph'
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 
+const MATERIALIZE_STATS = Symbol('rdf-cli.materialize.stats')
+
+export function getMaterializeStats (store) {
+  return store?.[MATERIALIZE_STATS] ?? {
+    quadsIn: store?.size ?? 0,
+    quadsOut: store?.size ?? 0,
+    droppedIn: 0,
+  }
+}
+
 function termInstance (term) {
   if (term.termType === 'Literal')
     return rdf.literal(term.value, term.language || term.datatype)
@@ -15,8 +25,10 @@ function termInstance (term) {
 // point: one store can then feed many query ops instead of each op re-draining.
 export async function materialize (source) {
   const store = new Store()
+  let quadsIn = 0
   let dropped = 0
   for await (const quad of source) {
+    quadsIn++
     try {
       store.add(quad)
     } catch {
@@ -24,6 +36,9 @@ export async function materialize (source) {
     }
   }
   if (dropped > 0) process.stderr.write(`warning: dropped ${dropped} quads\n`)
+  Object.defineProperty(store, MATERIALIZE_STATS, {
+    value: { quadsIn, quadsOut: store.size, droppedIn: dropped },
+  })
   return store
 }
 

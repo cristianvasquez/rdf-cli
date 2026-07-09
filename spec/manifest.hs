@@ -1,6 +1,7 @@
-{-# LANGUAGE DataKinds       #-}
-{-# LANGUAGE GADTs           #-}
-{-# LANGUAGE KindSignatures  #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DuplicateRecordFields  #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
 
 -- | Type-level manifest of rdf-cli.
 --
@@ -21,6 +22,8 @@
 -- means "graphless", and nothing turns graphless into named implicitly.
 
 module RdfCli.Manifest where
+
+import Data.Kind (Type)
 
 --------------------------------------------------------------------------------
 -- RDF core (the RDF/JS data model, as provided by rdf-ext)
@@ -122,6 +125,8 @@ data ReadOpts = ReadOpts
   , onError   :: Maybe (FilePath -> Error -> IO ())
   }
 
+type Pattern = String
+
 -- | Parse one file into quads. @throw@s when the format cannot be resolved.
 streamFileQuads :: FilePath -> Maybe MimeType -> Either Error QuadStream
 
@@ -129,7 +134,6 @@ streamFileQuads :: FilePath -> Maybe MimeType -> Either Error QuadStream
 readFromPaths :: PathStream -> ReadOpts -> QuadStream
 -- | Expand globs, then 'readFromPaths'.
 readFromGlob  :: [Pattern] -> ReadOpts -> QuadStream
-type Pattern = String
 
 -- | Read RDF bytes from stdin. With a hint, stream directly; without, buffer and
 -- 'detectFormat'. Calls @process.exit 1@ when the format cannot be detected.
@@ -141,12 +145,11 @@ readFromStdin :: Maybe MimeType -> IO QuadStream
 
 type Pipe a b = Stream a -> Stream b
 type QuadPipe = Pipe Quad Quad
+type Query = String
 
 assignGraph :: Iri -> QuadPipe      -- ^ graphless → the named graph; existing graphs kept.
 dropGraph   :: QuadPipe             -- ^ every graph term → DefaultGraph.
-skolemize   :: Iri -> QuadPipe      -- ^ blank nodes → stable IRIs under a base IRI.
-
-type Query = String
+skolemize   :: Iri -> QuadPipe      -- ^ blank nodes → generated IRIs, consistent within one run.
 
 -- SPARQL: materialization is its own step, so one Store feeds many query ops
 -- instead of each op re-draining the source. Store-level ops are pure over the
@@ -155,7 +158,7 @@ materialize :: QuadStream -> IO Store           -- ^ drains the stream into a st
 select      :: Store -> Query -> BindingsStream -- ^ leaves RDF space.
 construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine can't emit graphs).
 
--- Claim/construct cascade.
+-- Claim/construct cascade (planned; not implemented in src yet).
 --
 -- There are two folds here:
 --
@@ -225,7 +228,7 @@ data ProjectionStep c = ProjectionStep
 -- returning the step plus the right side for the next cascade step.
 runProjection :: Projection c -> WorkingSet -> IO (ProjectionStep c, WorkingSet)
 
-data Some (f :: ClaimId -> *) where
+data Some (f :: ClaimId -> Type) where
   Some :: f c -> Some f
 
 type SomeProjection = Some Projection
@@ -233,6 +236,7 @@ type CascadeStep = Some ProjectionStep
 
 data CascadeChannel = SourceChannel | ViewChannel | PassThroughChannel
 type CascadeShape = StreamShape CascadeChannel
+
 -- cascadeShape = SourceChannel ‖ ViewChannel ‖ PassThroughChannel
 cascadeShape :: CascadeShape
 
@@ -273,11 +277,17 @@ data BuiltinName = Shacl | Skos
 type ShapeSource = Pattern
 
 resolveBuiltinShapes :: BuiltinName -> Maybe FilePath
+
+data ValidationStats = ValidationStats
+  { validationQuadsIn  :: Int
+  , validationQuadsOut :: Int
+  }
+
 -- | Consumes the same 'Store' (the shacl dataset is derived from it), so validation
 -- composes with the SPARQL ops over a single materialization. Returns the original
--- data ++ the report in a named graph, and the 'Summary' — the verdict that travels
--- as provenance. No bespoke result record; the caller reads the verdict from history.
-validate :: Store -> [ShapeSource] -> Iri {- reportGraph -} -> IO (QuadStream, Summary)
+-- data ++ the report in a named graph, the 'Summary' verdict, and validation counts
+-- for provenance.
+validate :: Store -> [ShapeSource] -> Iri {- reportGraph -} -> IO (QuadStream, Summary, ValidationStats)
 
 data ShapeViolation = ShapeViolation
   { focusNode        :: String
@@ -296,12 +306,15 @@ data Summary = Summary
   , violations     :: [ShapeViolation]
   }
 
-formatMarkdownReport :: Summary -> String {- label -} -> Text
 type Text = String
+
+formatMarkdownReport :: Summary -> String {- label -} -> Text
 
 --------------------------------------------------------------------------------
 -- Sinks  (src/sinks) — terminal effects: bytes/text to stdout
 --------------------------------------------------------------------------------
+
+data TableFormat = CSV | TSV | JSONL
 
 toReadable      :: Stream a -> Stream a          -- ^ idempotent coercion to a Readable.
 writeQuads      :: QuadStream -> MimeType -> IO ()          -- ^ default MimeType = nquads.
@@ -314,7 +327,6 @@ writePretty     :: QuadStream -> MimeType -> Prefixes -> IO ()
 bindingToJSONL  :: Row -> Text
 writeBindings   :: BindingsStream -> IO ()
 
-data TableFormat = CSV | TSV | JSONL
 writeTable      :: Stream Line -> TableFormat -> IO ()
 
 type Prefixes = [(Prefix, Iri)]
@@ -350,11 +362,11 @@ data Cmd (i :: StreamKind) (o :: StreamKind) where
 -- | A pipeline is a chain of commands whose wire kinds line up end to end.
 data Pipeline (i :: StreamKind) (o :: StreamKind) where
   Last :: Cmd i o -> Pipeline i o
-  (:|) :: Cmd i m -> Pipeline m o -> Pipeline i o
-infixr 5 :|
+  (:>) :: Cmd i m -> Pipeline m o -> Pipeline i o
+infixr 5 :>
 
--- Well-typed:   Read :| Select q :| Last Table        :: Pipeline 'RDF 'Text
--- Ill-typed:    Read :| Last Table   -- NQuads ≠ JSONLinesBindings, rejected.
+-- Well-typed:   Read :> Select q :> Last Table        :: Pipeline 'RDF 'Text
+-- Ill-typed:    Read :> Last Table   -- NQuads ≠ JSONLinesBindings, rejected.
 
 --------------------------------------------------------------------------------
 -- Operations & provenance  (proposed — the composable, lineage-tracking layer)
@@ -374,7 +386,8 @@ type OpId = String
 -- pipeline crosses materialization boundaries (stream → store → bindings → text).
 -- 'VStore' is the multi-read value; the single-pass ones have at most one consumer.
 data Value
-  = VQuads    QuadStream
+  = VEmpty
+  | VQuads    QuadStream
   | VStore    Store
   | VBindings BindingsStream
   | VText     Text
@@ -409,6 +422,7 @@ data Meta = Meta
   , quadsOut   :: Maybe Int
   , droppedIn  :: Maybe Int     -- ^ quads oxigraph refused (the materialize warning).
   , validation :: Maybe Summary -- ^ validate only: the SHACL verdict, readable downstream.
+  , passed     :: Maybe Bool    -- ^ requireConformance only.
   }
 type Timestamp = String
 
@@ -454,3 +468,72 @@ provenanceToDataset :: [OpResult] -> Dataset
 -- Only these four namespaces are exported; command modules stay internal.
 -- 'pipeline' is the Operation/Envelope layer above; the others are its building blocks.
 --------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- Compile-only stubs
+--
+-- The manifest is signature-level, but keeping it as a valid Haskell module lets
+-- lint catch drift. These bindings are deliberately collected here so the algebra
+-- above reads as declarations, not implementation.
+--------------------------------------------------------------------------------
+
+manifestOnly :: a
+manifestOnly = error "signature-level manifest only"
+
+nquads = manifestOnly
+ntriples = manifestOnly
+turtle = manifestOnly
+trig = manifestOnly
+
+resolveFormat = manifestOnly
+guessMimeType = manifestOnly
+detectFormat = manifestOnly
+
+streamFileQuads = manifestOnly
+readFromPaths = manifestOnly
+readFromGlob = manifestOnly
+readFromStdin = manifestOnly
+
+assignGraph = manifestOnly
+dropGraph = manifestOnly
+skolemize = manifestOnly
+materialize = manifestOnly
+select = manifestOnly
+construct = manifestOnly
+
+claim = manifestOnly
+runConstruct = manifestOnly
+runConstructs = manifestOnly
+claimedToDataset = manifestOnly
+asProjected = manifestOnly
+project = manifestOnly
+sourceGraphOf = manifestOnly
+runProjection = manifestOnly
+cascadeShape = manifestOnly
+mapAccumM = manifestOnly
+cascadeStep = manifestOnly
+foldCascade = manifestOnly
+runCascade = manifestOnly
+loadCascade = manifestOnly
+emitCascade = manifestOnly
+
+resolveBuiltinShapes = manifestOnly
+validate = manifestOnly
+formatMarkdownReport = manifestOnly
+
+toReadable = manifestOnly
+writeQuads = manifestOnly
+loadPrefixes = manifestOnly
+datasetToString = manifestOnly
+writePretty = manifestOnly
+bindingToJSONL = manifestOnly
+writeBindings = manifestOnly
+writeTable = manifestOnly
+
+collectDataset = manifestOnly
+readLines = manifestOnly
+
+pipe = manifestOnly
+validateOp = manifestOnly
+requireConformance = manifestOnly
+provenanceToDataset = manifestOnly

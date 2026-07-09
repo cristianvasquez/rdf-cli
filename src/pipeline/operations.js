@@ -8,6 +8,7 @@ import {
   dropGraph as dropGraphTransform,
   skolemize,
 } from '../transforms/index.js'
+import { getMaterializeStats } from '../transforms/sparql.js'
 import { readFromGlob, readFromStdin } from '../sources/index.js'
 import { toReadable } from '../sinks/index.js'
 import { Value, expectValue, operation, Abort } from './core.js'
@@ -28,7 +29,7 @@ export const readStdin = operation('read', async () => ({
 // --- Materialization + SPARQL ---
 export const materialize = operation('materialize', async (env) => {
   const store = await toStore(asReadable(env.value, 'materialize'))
-  return { value: Value.store(store), meta: { quadsIn: store.size } }
+  return { value: Value.store(store), meta: getMaterializeStats(store) }
 })
 
 export const select = (query) =>
@@ -44,8 +45,8 @@ export const construct = (query) =>
 // --- SHACL: the verdict travels as provenance (meta.validation) ---
 export const validate = (shapeSources, opts = {}) =>
   operation('validate', async (env) => {
-    const { stream, summary } = await shaclValidate(asStore(env.value, 'validate'), shapeSources, opts)
-    return { value: Value.quads(stream), meta: { validation: summary } }
+    const { stream, summary, stats = {} } = await shaclValidate(asStore(env.value, 'validate'), shapeSources, opts)
+    return { value: Value.quads(stream), meta: { ...stats, validation: summary } }
   })
 
 // --- Streaming graph/skolem transforms ---

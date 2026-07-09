@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import {
   Abort,
+  emptyEnvelope,
   materialize,
   pipe,
   readPaths,
@@ -19,6 +20,10 @@ async function collect (iterable) {
   for await (const item of iterable) out.push(item)
   return out
 }
+
+test('emptyEnvelope starts with a tagged empty value', () => {
+  assert.deepEqual(emptyEnvelope(), { value: { type: 'empty' }, history: [] })
+})
 
 test('pipe threads value through materialization boundaries and records history', async () => {
   const env = await pipe(
@@ -39,8 +44,10 @@ test('pipe threads value through materialization boundaries and records history'
   assert.deepEqual(env.history[1].inputs, ['op1'])
   assert.deepEqual(env.history[2].inputs, ['op2'])
 
-  // materialize recorded a data-dependent fact; every op carries timing.
+  // materialize recorded data-dependent facts; every op carries timing.
   assert.ok(env.history[1].meta.quadsIn > 0)
+  assert.ok(env.history[1].meta.quadsOut > 0)
+  assert.equal(env.history[1].meta.droppedIn, 0)
   assert.ok(env.history.every((r) => typeof r.meta.durationMs === 'number'))
 })
 
@@ -55,6 +62,8 @@ test('validate records its verdict in history as provenance', async () => {
   assert.equal(v.kind, 'validate')
   assert.equal(v.meta.validation.conforms, true)
   assert.ok(Array.isArray(v.meta.validation.violations))
+  assert.ok(v.meta.quadsIn > 0)
+  assert.ok(v.meta.quadsOut > v.meta.quadsIn)
 })
 
 test('requireConformance passes when the upstream validation conformed', async () => {

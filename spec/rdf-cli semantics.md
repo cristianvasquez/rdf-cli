@@ -19,19 +19,11 @@ This document defines the current command contract for `rdf`.
 - `table` and `pretty` are sinks.
 - Errors go to stderr. When possible, valid inputs still produce output even if another input fails.
 
-## Commands
+## Command Contract
 
-| Command | Input | Output | Notes |
-| --- | --- | --- | --- |
-| `read` | file paths as args, or RDF bytes on stdin when no paths are given | dataset stream as N-Quads | Expands file globs. Auto-detects stdin RDF format. `--graph-from path` is only for file inputs. |
-| `from-paths` | one file path per stdin line | dataset stream as N-Quads | Parses each path independently. Preserves graphless statements by default. Supports `--graph-from path`. |
-| `select` | dataset stream as N-Quads on stdin | bindings stream as JSON Lines | Runs a SPARQL `SELECT` over the full dataset. |
-| `table` | bindings stream as JSON Lines on stdin | text | Sink. `--format csv|tsv|jsonl`. |
-| `construct` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Runs a SPARQL `CONSTRUCT`. Output is currently graphless because the engine does not support `GRAPH` in the construct template. |
-| `validate` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Validates against custom or built-in SHACL shapes. Appends the report in a named graph. Exits with code `1` on non-conformance. |
-| `graph-assign` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Rewrites graphless statements into the supplied named graph. Preserves existing named graphs. |
-| `graph-drop` | dataset stream as N-Quads on stdin | dataset stream as N-Quads | Removes graph terms from all statements. |
-| `pretty` | dataset stream as N-Quads on stdin | text or RDF bytes | Sink. `--format trig` is default and preserves named graphs. `turtle` and `ntriples` drop graph assignments. `nquads` preserves named graphs. |
+The command-by-command input/output contract is the `Cmd` algebra in
+[`manifest.hs`](manifest.hs). `pnpm lint` checks that the JavaScript command
+`io:{}` metadata stays in sync with it.
 
 ## Graph policy
 
