@@ -4,7 +4,7 @@ import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 import Validator from 'shacl-engine/Validator.js'
 import { streamFileQuads } from '../sources/paths.js'
-import { collectDataset } from '../utils.js'
+import { storeToDataset } from './sparql.js'
 
 const BUILTIN_SHAPES = {
   shacl: fileURLToPath(new URL('../../resources/shacl-shacl.ttl', import.meta.url)),
@@ -44,11 +44,9 @@ function reportToNamedGraph (report, graphURI) {
   return named
 }
 
-export async function createValidateStream (source, shapeSources, { reportGraph = 'urn:validation-report' } = {}) {
-  const [dataDataset, shapesDataset] = await Promise.all([
-    collectDataset(source),
-    loadShapesDataset(shapeSources),
-  ])
+export async function validate (store, shapeSources, { reportGraph = 'urn:validation-report' } = {}) {
+  const shapesDataset = await loadShapesDataset(shapeSources)
+  const dataDataset = storeToDataset(store)
 
   const validator = new Validator(shapesDataset, { factory: rdf })
   const report = await validator.validate({ dataset: dataDataset })

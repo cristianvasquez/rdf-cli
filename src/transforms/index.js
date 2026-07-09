@@ -6,10 +6,10 @@ export {
   skolemize,
   skolemizeDataset,
 } from './skolem.js'
-export { collectToStore, createConstructStream, createSelectStream } from './sparql.js'
+export { materialize, storeToDataset, construct, select } from './sparql.js'
 export {
   resolveBuiltinShapes,
-  createValidateStream,
+  validate,
   summarizeReport,
   formatMarkdownReport,
 } from './shacl.js'

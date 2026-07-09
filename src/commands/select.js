@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { writeBindings } from '../sinks/bindings.js'
-import { createSelectStream } from '../transforms/sparql.js'
+import { materialize, select } from '../transforms/sparql.js'
 
 export default defineCommand({
   io: { stdin: 'NQuads', stdout: 'JSONLinesBindings' },
@@ -30,7 +30,7 @@ export default defineCommand({
       process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
       process.exit(1)
     }
-    const source = await readFromStdin(NQUADS)
-    await writeBindings(await createSelectStream(source, query))
+    const store = await materialize(await readFromStdin(NQUADS))
+    await writeBindings(select(store, query))
   },
 })

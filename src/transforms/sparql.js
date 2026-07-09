@@ -11,7 +11,9 @@ function termInstance (term) {
   return term
 }
 
-export async function collectToStore (source) {
+// Drain a quad stream into an oxigraph store. This is the single materialization
+// point: one store can then feed many query ops instead of each op re-draining.
+export async function materialize (source) {
   const store = new Store()
   let dropped = 0
   for await (const quad of source) {
@@ -23,6 +25,23 @@ export async function collectToStore (source) {
   }
   if (dropped > 0) process.stderr.write(`warning: dropped ${dropped} quads\n`)
   return store
+}
+
+// Copy a store back into an rdf-ext dataset (e.g. for shacl-engine, which needs a
+// dataset rather than a SPARQL store). Terms are re-instantiated as rdf-ext terms.
+export function storeToDataset (store) {
+  const dataset = rdf.dataset()
+  for (const quad of store.match()) {
+    dataset.add(
+      rdf.quad(
+        termInstance(quad.subject),
+        termInstance(quad.predicate),
+        termInstance(quad.object),
+        termInstance(quad.graph),
+      ),
+    )
+  }
+  return dataset
 }
 
 function * constructQuads (store, query) {
@@ -44,12 +63,12 @@ function * selectBindings (store, query) {
   }
 }
 
-export async function createConstructStream (source, query) {
-  const store = await collectToStore(source)
+// SPARQL CONSTRUCT over a materialized store. Output is graphless.
+export function construct (store, query) {
   return Readable.from(constructQuads(store, query), { objectMode: true })
 }
 
-export async function createSelectStream (source, query) {
-  const store = await collectToStore(source)
+// SPARQL SELECT over a materialized store. Leaves RDF space, yields bindings rows.
+export function select (store, query) {
   return selectBindings(store, query)
 }

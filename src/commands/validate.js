@@ -2,7 +2,8 @@ import { defineCommand } from 'citty'
 import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { writeQuads } from '../sinks/quads.js'
-import { createValidateStream, formatMarkdownReport, resolveBuiltinShapes, summarizeReport } from '../transforms/shacl.js'
+import { materialize } from '../transforms/sparql.js'
+import { validate, formatMarkdownReport, resolveBuiltinShapes, summarizeReport } from '../transforms/shacl.js'
 
 const DEFAULT_GRAPH = 'urn:validation-report'
 
@@ -54,8 +55,8 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const source = await readFromStdin(NQUADS)
-    const { stream, conforms, report } = await createValidateStream(source, shapeSources, {
+    const store = await materialize(await readFromStdin(NQUADS))
+    const { stream, conforms, report } = await validate(store, shapeSources, {
       reportGraph: args['report-graph'] ?? DEFAULT_GRAPH,
     })
 

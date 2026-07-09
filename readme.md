@@ -27,12 +27,15 @@ The package now exposes only the pipeline building blocks as a public module sur
 import { sources, transforms, sinks } from 'rdf-cli'
 
 const source = sources.readFromGlob(['./data/**/*.ttl'], { graphFrom: 'path' })
-const rows = await transforms.createSelectStream(
-  source,
+
+// Materialize once, then run one or more queries against the same store.
+const store = await transforms.materialize(source)
+const rows = transforms.select(
+  store,
   'SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }',
 )
 
-for await (const row of rows) {
+for (const row of rows) {
   console.log(row.s.value, row.p.value, row.o.value)
 }
 

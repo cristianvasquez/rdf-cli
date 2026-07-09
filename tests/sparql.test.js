@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import rdf from 'rdf-ext'
-import { createConstructStream, createSelectStream } from '../src/transforms/sparql.js'
+import { construct, materialize, select } from '../src/transforms/sparql.js'
 
 const ex = (s) => rdf.namedNode(`http://example.org/${s}`)
 
@@ -10,21 +10,24 @@ function quadsStream (...quads) {
   return Readable.from(quads, { objectMode: true })
 }
 
+const runConstruct = async (source, query) => construct(await materialize(source), query)
+const runSelect = async (source, query) => select(await materialize(source), query)
+
 async function collect (iterable) {
   const results = []
   for await (const item of iterable) results.push(item)
   return results
 }
 
-// --- createConstructStream ---
+// --- construct ---
 
-test('createConstructStream returns matching triples in default graph', async () => {
+test('construct returns matching triples in default graph', async () => {
   const input = quadsStream(
     rdf.quad(ex('Alice'), ex('knows'), ex('Bob')),
     rdf.quad(ex('Bob'), ex('knows'), ex('Carol')),
   )
 
-  const stream = await createConstructStream(
+  const stream = await runConstruct(
     input,
     'CONSTRUCT { ?s <http://example.org/knows> ?o } WHERE { ?s <http://example.org/knows> ?o }',
   )
@@ -36,12 +39,12 @@ test('createConstructStream returns matching triples in default graph', async ()
   assert.ok(quads.some((q) => q.subject.value === 'http://example.org/Bob'))
 })
 
-test('createConstructStream returns empty stream when query matches nothing', async () => {
+test('construct returns empty stream when query matches nothing', async () => {
   const input = quadsStream(
     rdf.quad(ex('Alice'), ex('knows'), ex('Bob')),
   )
 
-  const stream = await createConstructStream(
+  const stream = await runConstruct(
     input,
     'CONSTRUCT { ?s <http://example.org/likes> ?o } WHERE { ?s <http://example.org/likes> ?o }',
   )
@@ -50,12 +53,12 @@ test('createConstructStream returns empty stream when query matches nothing', as
   assert.equal(quads.length, 0)
 })
 
-test('createConstructStream accepts async iterable as source', async () => {
+test('construct accepts async iterable as source', async () => {
   async function * quads () {
     yield rdf.quad(ex('X'), ex('p'), ex('Y'))
   }
 
-  const stream = await createConstructStream(
+  const stream = await runConstruct(
     quads(),
     'CONSTRUCT { ?s <http://example.org/p> ?o } WHERE { ?s <http://example.org/p> ?o }',
   )
@@ -65,15 +68,15 @@ test('createConstructStream accepts async iterable as source', async () => {
   assert.equal(results[0].subject.value, 'http://example.org/X')
 })
 
-// --- createSelectStream ---
+// --- select ---
 
-test('createSelectStream returns bindings as plain objects', async () => {
+test('select returns bindings as plain objects', async () => {
   const input = quadsStream(
     rdf.quad(ex('Alice'), ex('knows'), ex('Bob')),
     rdf.quad(ex('Carol'), ex('knows'), ex('Dave')),
   )
 
-  const bindings = await createSelectStream(
+  const bindings = await runSelect(
     input,
     'SELECT ?s ?o WHERE { ?s <http://example.org/knows> ?o }',
   )
@@ -84,12 +87,12 @@ test('createSelectStream returns bindings as plain objects', async () => {
   assert.ok(rows.some((r) => r.s.value === 'http://example.org/Alice'))
 })
 
-test('createSelectStream returns empty iterable when query matches nothing', async () => {
+test('select returns empty iterable when query matches nothing', async () => {
   const input = quadsStream(
     rdf.quad(ex('Alice'), ex('knows'), ex('Bob')),
   )
 
-  const bindings = await createSelectStream(
+  const bindings = await runSelect(
     input,
     'SELECT ?s WHERE { ?s <http://example.org/likes> ?o }',
   )
@@ -98,12 +101,12 @@ test('createSelectStream returns empty iterable when query matches nothing', asy
   assert.equal(rows.length, 0)
 })
 
-test('createSelectStream binding values are rdf-ext term instances', async () => {
+test('select binding values are rdf-ext term instances', async () => {
   const input = quadsStream(
     rdf.quad(ex('Alice'), ex('name'), rdf.literal('Alice')),
   )
 
-  const bindings = await createSelectStream(
+  const bindings = await runSelect(
     input,
     'SELECT ?name WHERE { <http://example.org/Alice> <http://example.org/name> ?name }',
   )

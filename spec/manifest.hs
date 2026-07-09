@@ -135,12 +135,12 @@ skolemizeDataset     :: Dataset -> Iri -> Dataset
 
 type Query = String
 
--- SPARQL: drain the stream into an oxigraph store, then query it.
-collectToStore        :: QuadStream -> IO Store
--- | CONSTRUCT. Output is always graphless (engine cannot emit named graphs).
-createConstructStream :: QuadStream -> Query -> IO QuadStream
--- | SELECT: leaves RDF space, yields bindings.
-createSelectStream    :: QuadStream -> Query -> IO BindingsStream
+-- SPARQL: materialization is its own step, so one Store feeds many query ops
+-- instead of each op re-draining the source. Store-level ops are pure over the
+-- store (oxigraph queries run synchronously).
+materialize :: QuadStream -> IO Store           -- ^ drains the stream into a store.
+select      :: Store -> Query -> BindingsStream -- ^ leaves RDF space.
+construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine can't emit graphs).
 
 -- SHACL validation.
 type BuiltinName = String    -- ^ "shacl" | "skos".
@@ -155,7 +155,10 @@ data ValidationResult = ValidationResult
   }
 
 resolveBuiltinShapes :: BuiltinName -> Maybe FilePath
-createValidateStream :: QuadStream -> [ShapeSource] -> Iri {- reportGraph -} -> IO ValidationResult
+-- | Consumes the same 'Store' (the shacl dataset is derived from it), so validation
+-- composes with the SPARQL ops over a single materialization. Costs a transient
+-- second copy while shacl-engine runs.
+validate :: Store -> [ShapeSource] -> Iri {- reportGraph -} -> IO ValidationResult
 
 data Violation = Violation
   { focusNode        :: String
@@ -232,6 +235,88 @@ infixr 5 :|
 
 -- Well-typed:   Read :| Select q :| Last Table        :: Pipeline 'RDF 'Text
 -- Ill-typed:    Read :| Last Table   -- NQuads ≠ JSONLinesBindings, rejected.
+
+--------------------------------------------------------------------------------
+-- Operations & provenance  (proposed — the composable, lineage-tracking layer)
+--
+-- The 'Cmd' algebra above is the user-facing CLI projection. Underneath, each step
+-- is an 'Op': a node in a DAG. Running the DAG yields BOTH the final value and one
+-- 'OpResult' per node — the provenance array the caller asked for.
+--
+-- The key invariant ties this layer to 'materialize': a 'QuadStream' is single-pass,
+-- so any node consumed by more than one downstream node MUST be a 'Store' (multi-read).
+-- Fan-out in the DAG therefore lands exactly on materialization points — extracting
+-- the store is what makes a branching provenance DAG expressible in the first place.
+--------------------------------------------------------------------------------
+
+type OpId = String
+
+-- | The value carried on an edge between operations.
+data Value
+  = VQuads    QuadStream     -- ^ single-pass: at most one consumer.
+  | VStore    Store          -- ^ multi-read: the legal fan-out / branch point.
+  | VBindings BindingsStream -- ^ single-pass.
+  | VReport   Report
+  | VText     Text
+
+-- | What each operation does. Extensible: a new transform is one more constructor,
+-- and it composes with the rest for free because it shares the 'Value' vocabulary.
+data Op
+  = OpReadPaths   [Pattern] ReadOpts
+  | OpReadStdin
+  | OpFromPaths   ReadOpts
+  | OpMaterialize                       -- ^ QuadStream -> Store; the branch enabler.
+  | OpSelect      Query
+  | OpConstruct   Query
+  | OpValidate    [ShapeSource] Iri
+  | OpAssignGraph Iri
+  | OpDropGraph
+  | OpSkolem      Iri
+  | OpPretty      MimeType Prefixes
+  | OpTable       TableFormat
+
+-- | A node: an operation applied to the outputs of its input nodes.
+data Node = Node
+  { nodeId :: OpId
+  , op     :: Op
+  , inputs :: [OpId]      -- ^ references to other nodes, forming the DAG.
+  }
+
+data Dag = Dag
+  { nodes  :: [Node]
+  , output :: OpId        -- ^ the node whose 'Value' is the pipeline result.
+  }
+
+-- | Per-node provenance: what ran, over what, what came out, and measured facts.
+data OpResult = OpResult
+  { resultId :: OpId
+  , resultOp :: Op
+  , usedIds  :: [OpId]    -- ^ prov:used (its input nodes).
+  , produced :: Value     -- ^ prov:generated.
+  , meta     :: Meta
+  }
+
+-- | Measured facts kept in lineage. Grows independently of 'Op'.
+data Meta = Meta
+  { startedAt     :: Timestamp
+  , durationMs    :: Int
+  , quadsIn       :: Maybe Int
+  , quadsOut      :: Maybe Int
+  , droppedIn     :: Maybe Int    -- ^ quads oxigraph refused (the materialize warning).
+  , metaConforms  :: Maybe Bool   -- ^ validate only.
+  }
+type Timestamp = String
+
+-- | Execute the DAG as a topological fold. The in-memory 'OpResult' array is the
+-- runtime source of truth; the final 'Value' is the 'output' node's product.
+run :: Dag -> IO (Value, [OpResult])
+
+-- | Render provenance to PROV-O RDF on demand (opt-in, off the hot path):
+--   OpResult  -> prov:Activity  (prov:startedAtTime, durationMs/counts as typed literals)
+--   usedIds   -> prov:used
+--   produced  -> prov:generated (a prov:Entity)
+--   input→output edges -> prov:wasDerivedFrom
+provenanceToDataset :: [OpResult] -> Dataset
 
 --------------------------------------------------------------------------------
 -- Public library surface  (src/index.js)
