@@ -40,6 +40,10 @@ data Term
 -- | Positional roles are not enforced at the type level here, but the intent is:
 -- subject ∈ {NamedNode, BlankNode}, predicate ∈ {NamedNode},
 -- object ∈ {NamedNode, BlankNode, Literal}, graph ∈ {NamedNode, BlankNode, DefaultGraph}.
+-- RDF/JS represents all positions with the same 'Term' shape; this manifest keeps
+-- that shape rather than introducing separate graph/subject/object term wrappers.
+-- Language-tagged literals follow RDF/JS: their datatype is rdf:langString; literals
+-- without a language tag carry their explicit datatype.
 data Quad = Quad
   { subject   :: Term
   , predicate :: Term
@@ -51,6 +55,11 @@ data Dataset     -- ^ @rdf.dataset()@: an in-memory, de-duplicated set of quads.
 data Store       -- ^ oxigraph in-memory triplestore (opaque; the SPARQL engine).
 
 type Error = String
+-- Error policy: this manifest mirrors the current JS surfaces instead of
+-- normalizing them away. 'Either Error a' marks explicit throw-like paths,
+-- callback fields mark recoverable per-item errors, and noted @process.exit@
+-- paths are terminal CLI effects. A future JS cleanup may collapse these into
+-- one ExceptT-style layer; the current contract stays precise about reality.
 
 --------------------------------------------------------------------------------
 -- Stream carriers (what actually flows over a Unix pipe)
@@ -65,6 +74,16 @@ type Row            = [(Var, Term)]     -- ^ one SELECT solution.
 type Var            = String
 type Line           = String
 type Byte           = Int
+
+-- | Logical stream shapes, borrowed as vocabulary from stream types. These are
+-- not the CLI wire kinds below: they describe richer structure inside one
+-- dataset-producing operation.
+data StreamShape a
+  = One a
+  | Empty
+  | Seq (StreamShape a) (StreamShape a)  -- ^ @s · t@: first @s@, then @t@.
+  | Par (StreamShape a) (StreamShape a)  -- ^ @s ‖ t@: independent logical channels.
+  | Many (StreamShape a)                 -- ^ @s*@.
 
 -- | The closed set of stream kinds the CLI tags each command with (the @io@
 -- metadata in every command module, surfaced by @scripts/manifest.js@).
@@ -136,8 +155,121 @@ materialize :: QuadStream -> IO Store           -- ^ drains the stream into a st
 select      :: Store -> Query -> BindingsStream -- ^ leaves RDF space.
 construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine can't emit graphs).
 
+-- Claim/construct cascade.
+--
+-- There are two folds here:
+--
+--   * 'runConstructs' applies several CONSTRUCT queries consecutively to a
+--     dataset.
+--   * 'foldCascade' applies several claim-and-construct projections
+--     consecutively to a working set. Each step partitions the current
+--     'WorkingSet' into a claimed summand and a remainder; the fold carries
+--     the remainder forward and accumulates the claimed summands.
+--
+-- The claim boundary is explicit: 'project' seeds the constructs from
+-- 'ClaimedSet c', never from the whole working dataset.
+--
+-- How to read the phantom @c@: it names one claim rule at the type level, so
+-- quads claimed by that rule cannot be confused with another rule's quads in
+-- the signatures below. The set of claim rules is open: built-ins and
+-- user-provided cascade files introduce projections at runtime, so loaded
+-- projections are packed with 'Some' before folding the cascade.
+data ClaimId
+data WorkingSet                   -- ^ current unclaimed quads.
+data Claims       (c :: ClaimId)  -- ^ claim rules for one projection (currently SHACL shapes).
+data ClaimedSet   (c :: ClaimId)  -- ^ subset read by 'Claims c'.
+data ProjectedSet                 -- ^ derived quads emitted from a claimed set.
+data NonEmpty a = a :| [a]
+
+-- | A pair witnessing a lossless coproduct decomposition of a working set:
+-- both sides exist together, and under their forgetful view as sets of quads
+-- they cover the input without overlap.
+data Split left right = Split
+  { claimed   :: left
+  , remainder :: right
+  }
+
+claim :: Claims c -> WorkingSet -> IO (Split (ClaimedSet c) WorkingSet)
+-- Laws for @Split claimed remainder <- claim claims input@:
+--   (viewed as sets of quads)
+--   partition: claimed ∪ remainder = input
+--   disjoint:  claimed ∩ remainder = ∅
+
+data Construct  = ConstructQuery Query
+type Constructs = NonEmpty Construct -- ^ order is significant.
+
+runConstruct  :: Construct -> Dataset -> IO Dataset
+-- runConstructs (c :| cs) d0 = foldM (\d q -> runConstruct q d) d0 (c : cs)
+runConstructs :: Constructs -> Dataset -> IO Dataset
+
+claimedToDataset :: ClaimedSet c -> Dataset
+asProjected      :: Dataset -> ProjectedSet
+-- project cs claimed = asProjected <$> runConstructs cs (claimedToDataset claimed)
+project          :: Constructs -> ClaimedSet c -> IO ProjectedSet
+
+data Projection (c :: ClaimId) = Projection
+  { projectionGraph      :: Iri
+  , projectionClaims     :: Claims c
+  , projectionConstructs :: Maybe Constructs -- ^ Nothing => claim/source only.
+  }
+
+sourceGraphOf :: Iri -> Iri
+
+data ProjectionStep c = ProjectionStep
+  { stepProjection :: Projection c
+  , stepSource     :: ClaimedSet c
+  , stepView       :: Maybe ProjectedSet
+  }
+
+-- runProjection p ws = claim (projectionClaims p) ws >>= project the claimed side,
+-- returning the step plus the right side for the next cascade step.
+runProjection :: Projection c -> WorkingSet -> IO (ProjectionStep c, WorkingSet)
+
+data Some (f :: ClaimId -> *) where
+  Some :: f c -> Some f
+
+type SomeProjection = Some Projection
+type CascadeStep = Some ProjectionStep
+
+data CascadeChannel = SourceChannel | ViewChannel | PassThroughChannel
+type CascadeShape = StreamShape CascadeChannel
+-- cascadeShape = SourceChannel ‖ ViewChannel ‖ PassThroughChannel
+cascadeShape :: CascadeShape
+
+data CascadeResult = CascadeResult
+  { cascadeSteps       :: [CascadeStep]
+  , cascadePassThrough :: WorkingSet
+  }
+
+-- Internal to 'loadCascade': order is parse-time metadata. 'loadCascade' sorts
+-- by 'projectionOrder' and then drops the number; list position is the cascade
+-- precedence.
+data ParsedProjection = ParsedProjection
+  { projectionOrder :: Int
+  , parsedProjection :: SomeProjection
+  }
+
+-- Law (precedence): 'Cascade' is order-sensitive. If two projections can claim
+-- the same quad, the earlier list element wins because later elements only see
+-- the folded remainder.
+data Cascade = Cascade [SomeProjection] -- ^ sorted; this list is not commutative.
+
+mapAccumM   :: (s -> a -> IO (s, b)) -> s -> [a] -> IO (s, [b])
+cascadeStep :: WorkingSet -> SomeProjection -> IO (WorkingSet, CascadeStep)
+-- foldCascade ps ws0 = mapAccumM cascadeStep ws0 ps
+foldCascade :: [SomeProjection] -> WorkingSet -> IO (WorkingSet, [CascadeStep])
+runCascade  :: Cascade -> WorkingSet -> IO CascadeResult
+-- runCascade (Cascade ps) ws0 = do
+--   (passThrough, steps) <- foldCascade ps ws0
+--   pure (CascadeResult steps passThrough)
+loadCascade :: Dataset -> Cascade       -- ^ parse named graphs, sort by order.
+-- The cascade's logical output shape is @source ‖ view ‖ passThrough@. The
+-- implementation serializes those channels into one RDF dataset by assigning
+-- source/view graph names and leaving pass-through as the final remainder.
+emitCascade :: CascadeResult -> Dataset
+
 -- SHACL validation.
-type BuiltinName = String    -- ^ "shacl" | "skos".
+data BuiltinName = Shacl | Skos
 type ShapeSource = Pattern
 
 resolveBuiltinShapes :: BuiltinName -> Maybe FilePath
@@ -147,19 +279,21 @@ resolveBuiltinShapes :: BuiltinName -> Maybe FilePath
 -- as provenance. No bespoke result record; the caller reads the verdict from history.
 validate :: Store -> [ShapeSource] -> Iri {- reportGraph -} -> IO (QuadStream, Summary)
 
-data Violation = Violation
+data ShapeViolation = ShapeViolation
   { focusNode        :: String
   , path             :: String
-  , severity         :: String
+  , severity         :: Severity
   , sourceConstraint :: String
   , message          :: String
   , value            :: String
   }
 
+data Severity = Info | Warning | Violation
+
 data Summary = Summary
   { conforms       :: Bool
   , violationCount :: Int
-  , violations     :: [Violation]
+  , violations     :: [ShapeViolation]
   }
 
 formatMarkdownReport :: Summary -> String {- label -} -> Text
@@ -249,10 +383,21 @@ data Value
 -- linear run captures DAG-shaped provenance that can be reconstructed as a graph.
 data OpResult = OpResult
   { opId   :: OpId
-  , kind   :: String       -- ^ "read" | "materialize" | "validate" | ...
+  , kind   :: OpKind
   , inputs :: [OpId]       -- ^ the prior results this op consumed.
   , meta   :: Meta
   }
+
+data OpKind
+  = ReadOp
+  | MaterializeOp
+  | SelectOp
+  | ConstructOp
+  | ValidateOp
+  | GraphAssignOp
+  | GraphDropOp
+  | SkolemOp
+  | RequireConformanceOp
 
 -- | Measured facts kept in lineage. Data-dependent fields are only filled by ops that
 -- actually materialize ('materialize', 'validate'); streaming ops leave them Nothing —
