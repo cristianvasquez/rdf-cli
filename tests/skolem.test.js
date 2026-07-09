@@ -2,35 +2,13 @@ import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import rdf from 'rdf-ext'
-import {
-  DEFAULT_SKOLEM_BASE_IRI,
-  createSkolemizer,
-  skolemize,
-  skolemizeDataset,
-} from '../src/transforms/skolem.js'
+import { skolemize } from '../src/transforms/skolem.js'
 
 async function collect (stream) {
   const quads = []
   for await (const quad of stream) quads.push(quad)
   return quads
 }
-
-test('createSkolemizer maps the same blank node to the same named node', () => {
-  const shared = rdf.blankNode('shared')
-  const other = rdf.blankNode('other')
-  const quad = rdf.quad(shared, shared, other, shared)
-  const skolemizeQuad = createSkolemizer('https://example.org/.well-known/genid')
-  const result = skolemizeQuad(quad)
-
-  assert.equal(result.subject.termType, 'NamedNode')
-  assert.equal(result.predicate.termType, 'NamedNode')
-  assert.equal(result.object.termType, 'NamedNode')
-  assert.equal(result.graph.termType, 'NamedNode')
-  assert.equal(result.subject.value, result.predicate.value)
-  assert.equal(result.subject.value, result.graph.value)
-  assert.notEqual(result.subject.value, result.object.value)
-  assert.match(result.subject.value, /^https:\/\/example\.org\/\.well-known\/genid\//)
-})
 
 test('skolemize rewrites blank nodes and preserves non-blank terms', async () => {
   const s = rdf.blankNode('s')
@@ -47,20 +25,28 @@ test('skolemize rewrites blank nodes and preserves non-blank terms', async () =>
   assert.equal(quad.predicate.value, p.value)
   assert.equal(quad.object.termType, 'NamedNode')
   assert.equal(quad.graph.value, g.value)
+  assert.match(quad.subject.value, /^https:\/\/example\.org\/genid\//)
 })
 
-test('skolemizeDataset returns a new dataset with generated IRIs', () => {
+test('skolemize maps the same blank node to the same IRI within a run', async () => {
   const shared = rdf.blankNode('shared')
-  const dataset = rdf.dataset([
-    rdf.quad(shared, rdf.namedNode('http://example.org/p'), rdf.literal('x')),
-    rdf.quad(rdf.namedNode('http://example.org/s'), rdf.namedNode('http://example.org/p2'), shared),
-  ])
+  const other = rdf.blankNode('other')
+  const input = [rdf.quad(shared, rdf.namedNode('http://example.org/p'), shared, other)]
 
-  const result = skolemizeDataset(dataset, { skolemBaseIri: DEFAULT_SKOLEM_BASE_IRI })
-  const [first, second] = [...result]
+  const [quad] = await collect(
+    Readable.from(input, { objectMode: true }).pipe(skolemize('https://example.org/genid/')),
+  )
 
-  assert.notEqual(result, dataset)
-  assert.equal(first.subject.termType, 'NamedNode')
-  assert.equal(second.object.termType, 'NamedNode')
-  assert.equal(first.subject.value, second.object.value)
+  assert.equal(quad.subject.value, quad.object.value)
+  assert.notEqual(quad.subject.value, quad.graph.value)
+})
+
+test('skolemize appends a trailing slash to a base without one', async () => {
+  const input = [rdf.quad(rdf.blankNode('b'), rdf.namedNode('http://example.org/p'), rdf.literal('x'))]
+
+  const [quad] = await collect(
+    Readable.from(input, { objectMode: true }).pipe(skolemize('https://example.org/genid')),
+  )
+
+  assert.match(quad.subject.value, /^https:\/\/example\.org\/genid\//)
 })

@@ -3,63 +3,27 @@ import rdf from 'rdf-ext'
 
 export const DEFAULT_SKOLEM_BASE_IRI = 'https://rdf-viz.local/.well-known/genid/'
 
-function normalizeSkolemBaseIri (skolemBaseIri) {
-  if (skolemBaseIri === false || skolemBaseIri == null || skolemBaseIri === '') {
-    return null
-  }
-
-  const iri = String(skolemBaseIri)
-  return iri.endsWith('/') ? iri : `${iri}/`
-}
-
 function randomId () {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
-export function createSkolemizer (skolemBaseIri = DEFAULT_SKOLEM_BASE_IRI) {
-  const baseIri = normalizeSkolemBaseIri(skolemBaseIri)
-  if (!baseIri) return null
-
+// Replace blank nodes with stable generated IRIs under `baseIri`. The same blank
+// node maps to the same IRI within a single run.
+export function skolemize (baseIri = DEFAULT_SKOLEM_BASE_IRI) {
+  const base = baseIri.endsWith('/') ? baseIri : `${baseIri}/`
   const blankNodes = rdf.termMap()
 
-  const skolemizeTerm = (term) => {
-    if (!term || term.termType !== 'BlankNode') return term
-
-    if (!blankNodes.has(term)) {
-      blankNodes.set(term, rdf.namedNode(`${baseIri}${randomId()}`))
-    }
-
+  const map = (term) => {
+    if (term.termType !== 'BlankNode') return term
+    if (!blankNodes.has(term)) blankNodes.set(term, rdf.namedNode(`${base}${randomId()}`))
     return blankNodes.get(term)
   }
-
-  return (quad) => rdf.quad(
-    skolemizeTerm(quad.subject),
-    skolemizeTerm(quad.predicate),
-    skolemizeTerm(quad.object),
-    skolemizeTerm(quad.graph),
-  )
-}
-
-export function skolemizeDataset (dataset, { skolemBaseIri = DEFAULT_SKOLEM_BASE_IRI } = {}) {
-  const skolemizeQuad = createSkolemizer(skolemBaseIri)
-  if (!skolemizeQuad) return dataset
-
-  const result = rdf.dataset()
-  for (const quad of dataset) {
-    result.add(skolemizeQuad(quad))
-  }
-
-  return result
-}
-
-export function skolemize (skolemBaseIri = DEFAULT_SKOLEM_BASE_IRI) {
-  const skolemizeQuad = createSkolemizer(skolemBaseIri)
 
   return new Transform({
     objectMode: true,
     transform (quad, _encoding, callback) {
-      callback(null, skolemizeQuad ? skolemizeQuad(quad) : quad)
+      callback(null, rdf.quad(map(quad.subject), map(quad.predicate), map(quad.object), map(quad.graph)))
     },
   })
 }

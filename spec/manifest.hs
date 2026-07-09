@@ -125,13 +125,7 @@ type QuadPipe = Pipe Quad Quad
 
 assignGraph :: Iri -> QuadPipe      -- ^ graphless → the named graph; existing graphs kept.
 dropGraph   :: QuadPipe             -- ^ every graph term → DefaultGraph.
-
--- Skolemization: blank nodes → stable generated IRIs (per-run, consistent within a run).
-skolemBaseIriDefault :: Iri
--- | 'Nothing' when the base IRI is disabled (empty/false) — caller treats as identity.
-createSkolemizer     :: Iri -> Maybe (Quad -> Quad)
-skolemize            :: Iri -> QuadPipe
-skolemizeDataset     :: Dataset -> Iri -> Dataset
+skolemize   :: Iri -> QuadPipe      -- ^ blank nodes → stable IRIs under a base IRI.
 
 type Query = String
 
