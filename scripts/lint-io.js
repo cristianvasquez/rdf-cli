@@ -11,22 +11,31 @@ const manifestPath = join(import.meta.dirname, '..', 'spec', 'manifest.hs')
 
 const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
 
-// Parse the Cmd algebra: e.g. `Read :: Cmd 'RDF 'NQuads` or
-// `Select :: Query -> Cmd 'NQuads 'JSONLinesBindings`. Pipeline lines (`Cmd i o`,
+// Parse the Cmd algebra into one entry per constructor: e.g. `Read :: Cmd 'RDF 'NQuads`
+// or `Select :: Query -> Cmd 'NQuads 'JSONLinesBindings`. Pipeline lines (`Cmd i o`,
 // unquoted) and comments are ignored.
 function parseCmdAlgebra (source) {
-  const sigs = {}
+  const entries = []
   for (const raw of source.split('\n')) {
     const line = raw.trim()
     if (line.startsWith('--')) continue
     const m = line.match(/^(\w+)\s*::.*\bCmd\s+'(\w+)\s+'(\w+)/)
-    if (m) sigs[kebab(m[1])] = { stdin: m[2], stdout: m[3] }
+    if (m) entries.push({ name: kebab(m[1]), stdin: m[2], stdout: m[3] })
   }
-  return sigs
+  return entries
 }
 
-const haskell = parseCmdAlgebra(readFileSync(manifestPath, 'utf8'))
+const haskellEntries = parseCmdAlgebra(readFileSync(manifestPath, 'utf8'))
+const haskell = Object.fromEntries(haskellEntries.map((e) => [e.name, { stdin: e.stdin, stdout: e.stdout }]))
 const js = Object.fromEntries(Object.entries(commands).map(([name, cmd]) => [name, cmd.io ?? null]))
+
+const warnings = []
+if (haskellEntries.length !== Object.keys(js).length) {
+  warnings.push(
+    `command count differs: ${haskellEntries.length} in spec/manifest.hs, ` +
+    `${Object.keys(js).length} in src/commands`,
+  )
+}
 
 const names = [...new Set([...Object.keys(haskell), ...Object.keys(js)])].sort()
 const problems = []
@@ -43,11 +52,14 @@ for (const name of names) {
   if (diffs.length) problems.push(`${name}: ${diffs.join('; ')}`)
 }
 
+for (const w of warnings) console.error(`warn   ${w}`)
+
 if (problems.length === 0) {
   for (const name of names) {
     console.log(`ok    ${name.padEnd(14)} ${haskell[name].stdin} -> ${haskell[name].stdout}`)
   }
-  console.log(`\nio:{} is in sync with spec/manifest.hs (${names.length} commands)`)
+  const suffix = warnings.length ? `, ${warnings.length} warning(s)` : ''
+  console.log(`\nio:{} is in sync with spec/manifest.hs (${names.length} commands${suffix})`)
 } else {
   for (const p of problems) console.error(`drift  ${p}`)
   console.error(`\n${problems.length} mismatch(es) between io:{} and the Cmd algebra in spec/manifest.hs`)
