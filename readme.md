@@ -259,7 +259,3 @@ printf '<http://ex/s> <http://ex/p> <http://ex/o> <http://ex/g> .\n' \
 ## Dependencies
 
 [RDF JavaScript Libraries](https://rdf.js.org/) and [Oxigraph](https://github.com/oxigraph/oxigraph) as in-memory triplestore.
-
-## TODO
-
-- Auto-detect input format for file inputs by extension is already wired (`.ttl`, `.nq`, `.trig`, …), but there is no way to force a format on a file whose extension lies. Consider a `--format` override on `read`.
