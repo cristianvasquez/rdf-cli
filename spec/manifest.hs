@@ -210,7 +210,7 @@ data Cmd (i :: StreamKind) (o :: StreamKind) where
   GraphAssign :: Iri -> Cmd 'NQuads 'NQuads
   GraphDrop   :: Cmd 'NQuads 'NQuads
   Skolem      :: Cmd 'NQuads 'NQuads
-  Pretty      :: Cmd 'NQuads 'Text
+  Pretty      :: Cmd 'NQuads 'RDF                     -- ^ emits re-readable serialized RDF.
   Table       :: Cmd 'JSONLinesBindings 'Text
 
 -- | A pipeline is a chain of commands whose wire kinds line up end to end.

@@ -35,6 +35,7 @@ const MEDIA_TYPES = {
   ],
   nquads: [NQUADS],
   text: ['text/plain'],
+  pathLines: ['text/plain'],
   jsonLinesBindings: ['application/x-ndjson'],
 }
 
@@ -67,6 +68,11 @@ async function* streamTypeQuads () {
   yield rdf.quad(cli.Text, rdfs.label, lit('Text'))
   yield rdf.quad(cli.Text, rdfs.comment, lit('Plain text stream.'))
   yield rdf.quad(cli.Text, cli.supportsMediaType, mediaTypeIri(MEDIA_TYPES.text[0]))
+
+  yield rdf.quad(cli.PathLines, rdfType, cli.StreamType)
+  yield rdf.quad(cli.PathLines, rdfs.label, lit('PathLines'))
+  yield rdf.quad(cli.PathLines, rdfs.comment, lit('One file path per line.'))
+  yield rdf.quad(cli.PathLines, cli.supportsMediaType, mediaTypeIri(MEDIA_TYPES.pathLines[0]))
 
   yield rdf.quad(cli.JSONLinesBindings, rdfType, cli.StreamType)
   yield rdf.quad(cli.JSONLinesBindings, rdfs.label, lit('JSONLinesBindings'))

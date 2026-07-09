@@ -4,7 +4,7 @@ import { writeQuads } from '../sinks/quads.js'
 import { readLines } from '../utils.js'
 
 export default defineCommand({
-  io: { stdin: 'Text', stdout: 'NQuads' },
+  io: { stdin: 'PathLines', stdout: 'NQuads' },
   meta: {
     name: 'from-paths',
     description:
