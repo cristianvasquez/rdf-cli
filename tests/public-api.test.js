@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import rdf from 'rdf-ext'
-import { sinks, sources, transforms } from 'rdf-cli'
+import { pipeline, sinks, sources, transforms } from 'rdf-cli'
 
 test('public api exposes namespace exports', () => {
   assert.equal(typeof sources.readFromGlob, 'function')
@@ -10,6 +10,8 @@ test('public api exposes namespace exports', () => {
   assert.equal(typeof transforms.select, 'function')
   assert.equal(typeof transforms.skolemize, 'function')
   assert.equal(typeof sinks.datasetToString, 'function')
+  assert.equal(typeof pipeline.pipe, 'function')
+  assert.equal(typeof pipeline.requireConformance, 'function')
 })
 
 test('public api does not expose top-level pipeline components', async () => {

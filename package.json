@@ -10,6 +10,7 @@
     "./sources": "./src/sources/index.js",
     "./transforms": "./src/transforms/index.js",
     "./sinks": "./src/sinks/index.js",
+    "./pipeline": "./src/pipeline/index.js",
     "./package.json": "./package.json"
   },
   "bin": {

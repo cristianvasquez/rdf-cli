@@ -20,16 +20,17 @@ async function storeFixture (name) {
   return materialize(Readable.from(streamFileQuads(path), { objectMode: true }))
 }
 
-test('validate conforms=true for valid data', async () => {
+test('validate summary.conforms=true for valid data', async () => {
   const store = await storeFixture('person-valid.ttl')
-  const { conforms } = await validate(store, [shapesFile])
-  assert.equal(conforms, true)
+  const { summary } = await validate(store, [shapesFile])
+  assert.equal(summary.conforms, true)
 })
 
-test('validate conforms=false for invalid data', async () => {
+test('validate summary.conforms=false for invalid data', async () => {
   const store = await storeFixture('person-invalid.ttl')
-  const { conforms } = await validate(store, [shapesFile])
-  assert.equal(conforms, false)
+  const { summary } = await validate(store, [shapesFile])
+  assert.equal(summary.conforms, false)
+  assert.ok(summary.violationCount > 0)
 })
 
 test('validate stream emits data quads plus report in named graph', async () => {
@@ -47,9 +48,9 @@ test('validate stream emits data quads plus report in named graph', async () => 
   assert.ok(dataQuads.length > 0, 'data quads should be present in default graph')
 })
 
-test('validate report object is accessible', async () => {
+test('validate summary carries conforms and violations', async () => {
   const store = await storeFixture('person-valid.ttl')
-  const { report } = await validate(store, [shapesFile])
-  assert.ok(report !== undefined)
-  assert.ok('conforms' in report)
+  const { summary } = await validate(store, [shapesFile])
+  assert.ok('conforms' in summary)
+  assert.ok(Array.isArray(summary.violations))
 })

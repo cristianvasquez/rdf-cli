@@ -3,7 +3,7 @@ import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { writeQuads } from '../sinks/quads.js'
 import { materialize } from '../transforms/sparql.js'
-import { validate, formatMarkdownReport, resolveBuiltinShapes, summarizeReport } from '../transforms/shacl.js'
+import { validate, formatMarkdownReport, resolveBuiltinShapes } from '../transforms/shacl.js'
 
 const DEFAULT_GRAPH = 'urn:validation-report'
 
@@ -56,7 +56,7 @@ export default defineCommand({
     }
 
     const store = await materialize(await readFromStdin(NQUADS))
-    const { stream, conforms, report } = await validate(store, shapeSources, {
+    const { stream, summary } = await validate(store, shapeSources, {
       reportGraph: args['report-graph'] ?? DEFAULT_GRAPH,
     })
 
@@ -66,9 +66,9 @@ export default defineCommand({
       const label = args.builtin
         ? `SHACL Validation (${String(args.builtin).toUpperCase()})`
         : 'SHACL Validation'
-      process.stderr.write(`${formatMarkdownReport(summarizeReport(report), { label })}\n`)
+      process.stderr.write(`${formatMarkdownReport(summary, { label })}\n`)
     }
 
-    if (!conforms) process.exitCode = 1
+    if (!summary.conforms) process.exitCode = 1
   },
 })

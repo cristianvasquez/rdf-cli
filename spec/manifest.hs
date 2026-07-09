@@ -304,7 +304,8 @@ provenanceToDataset :: [OpResult] -> Dataset
 --------------------------------------------------------------------------------
 -- Public library surface  (src/index.js)
 --
---   import { sources, transforms, sinks } from 'rdf-cli'
+--   import { sources, transforms, sinks, pipeline } from 'rdf-cli'
 --
--- Only these three namespaces are exported; command modules stay internal.
+-- Only these four namespaces are exported; command modules stay internal.
+-- 'pipeline' is the Operation/Envelope layer above; the others are its building blocks.
 --------------------------------------------------------------------------------

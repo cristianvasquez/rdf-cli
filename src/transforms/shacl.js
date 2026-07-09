@@ -54,8 +54,7 @@ export async function validate (store, shapeSources, { reportGraph = 'urn:valida
 
   return {
     stream: Readable.from(quads, { objectMode: true }),
-    conforms: report.conforms,
-    report,
+    summary: summarizeReport(report),
   }
 }
 
@@ -80,11 +79,11 @@ function pathToString (path) {
   }).join(' / ')
 }
 
-export function summarizeReport (report) {
+function summarizeReport (report) {
   return {
     conforms: report.conforms,
     violationCount: report.results.length,
-    results: report.results.map((r) => ({
+    violations: report.results.map((r) => ({
       focusNode: r.focusNode?.terms?.[0]?.value ?? '',
       path: pathToString(r.path),
       severity: termValue(r.severity),
@@ -103,9 +102,9 @@ export function formatMarkdownReport (summary, { label = 'SHACL Validation' } = 
     `- **Violations**: ${summary.violationCount}`,
   ]
 
-  if (summary.results.length > 0) {
+  if (summary.violations.length > 0) {
     lines.push('', '### Results', '')
-    for (const [i, r] of summary.results.entries()) {
+    for (const [i, r] of summary.violations.entries()) {
       lines.push(`**${i + 1}.** Focus node: \`${r.focusNode}\``)
       if (r.path) lines.push(`   Path: \`${r.path}\``)
       lines.push(`   Severity: \`${r.severity}\``)
