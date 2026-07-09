@@ -44,13 +44,23 @@ const trig = await sinks.datasetToString(dataset, {
 
 ## Stream kinds
 
+Commands compose over Unix pipes. What actually flows between them:
+
+- **Dataset stream** — serialized RDF as **N-Quads** on stdin/stdout. This is the wire format between every dataset-producing command (`read`, `from-paths`, `construct`, `validate`, `graph-assign`, `graph-drop`, `skolem`).
+- **Bindings stream** — SPARQL `SELECT` results as JSON Lines (one JSON object per line). Produced by `select`.
+- **Text stream** — human-oriented or general shell output from the sinks.
+
+Roles:
+
 - `read` is the default RDF source: it produces a dataset stream from file paths or stdin
 - `from-paths` is the path-stream bridge: it produces a dataset stream from one path per stdin line
-- `select` produces a bindings stream
+- `select` exits RDF space and produces a bindings stream
 - `validate` keeps you in dataset space by appending a SHACL report graph
 - `table` and `pretty` are sinks to text
 
 By default, graphless statements remain graphless. Graph assignment is explicit.
+
+For the full command-by-command input/output contract, see [`spec/rdf-cli semantics.md`](spec/rdf-cli%20semantics.md).
 
 ## Commands
 
@@ -92,6 +102,8 @@ rdf read ./data/**/*.ttl \
   | rdf select 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }'
 ```
 
+Read the query from a file instead of a positional argument with `--query-file <path>`.
+
 ### `table`
 
 Render a bindings stream as CSV, TSV, or JSON Lines.
@@ -112,6 +124,8 @@ rdf read ./data/**/*.ttl \
   | rdf pretty
 ```
 
+Read the query from a file instead of a positional argument with `--query-file <path>`.
+
 ### `validate`
 
 Validate a dataset stream against custom or built-in SHACL shapes. The original data stays in the stream and the validation report is appended as a named graph.
@@ -122,12 +136,19 @@ rdf read ./data.ttl \
   | rdf pretty --format trig
 ```
 
-Use bundled shapes when they are standard enough to deserve a first-class shortcut:
+`--shapes` accepts a comma-separated list of glob patterns. Use bundled shapes when they are standard enough to deserve a first-class shortcut:
 
 ```bash
 rdf read ./vocab.ttl \
   | rdf validate --builtin skos --markdown-report
 ```
+
+`--builtin` accepts `shacl` or `skos`. Other flags:
+
+- `--report-graph <iri>` sets the named graph for the appended report (default `<urn:validation-report>`).
+- `--markdown-report` prints a Markdown summary to stderr while the dataset stream still flows on stdout.
+
+`validate` exits with code `1` on non-conformance.
 
 ### `graph-assign <iri>`
 
@@ -183,6 +204,22 @@ rdf read ./data/**/*.ttl | rdf pretty --format ntriples > bundle.nt
 
 Prefixes are loaded from `.prefixes.json` in the current directory, or pass `--prefixes <file>`.
 
+## Formats
+
+Format tokens are case-insensitive. `read` and `from-paths` accept any of the input tokens below (stdin is also auto-detected when no format is forced); sinks emit the output tokens.
+
+| Token(s) | MIME type | Input | `pretty` output | Named graphs |
+| --- | --- | --- | --- | --- |
+| `trig` | `application/trig` | yes | yes (default) | preserved |
+| `turtle`, `ttl` | `text/turtle` | yes | yes | dropped |
+| `nquads`, `nq` | `application/n-quads` | yes | yes | preserved |
+| `ntriples`, `nt` | `application/n-triples` | yes | yes | dropped |
+| `jsonld`, `json` | `application/ld+json` | yes | no | — |
+| `rdfxml`, `xml` | `application/rdf+xml` | yes | no | — |
+| `n3` | `text/n3` | yes | no | — |
+
+`table` output formats: `csv`, `tsv`, `jsonl`.
+
 ## Examples
 
 ```bash
@@ -191,14 +228,22 @@ bash examples/do-construct.sh
 bash examples/trig-bundle.sh
 ```
 
+End to end, from N-Quads on stdin to TriG:
+
+```bash
+printf '<http://ex/s> <http://ex/p> <http://ex/o> <http://ex/g> .\n' \
+  | rdf read \
+  | rdf pretty --format trig
+```
+
+## Command manifest
+
+`npm run manifest` emits an RDF (N-Quads) description of the CLI itself — every command, its arguments, and the stream/media types it consumes and produces. Useful for tooling or agents that need a machine-readable contract instead of parsing `--help`.
+
 ## Dependencies
 
 [RDF JavaScript Libraries](https://rdf.js.org/) and [Oxigraph](https://github.com/oxigraph/oxigraph) as in-memory triplestore.
 
 ## TODO
 
-- Clarify the contract between "dataset stream" as an abstract stream kind and what actually flows through a Unix pipe. Agents need the docs to say explicitly when stdin/stdout carry serialized RDF bytes such as N-Quads versus an internal conceptual stream.
-- Document the canonical accepted values for sink `--format`, plus aliases and MIME types. The current docs make tokens like `nquads` versus `n-quads` too easy to guess wrong.
-- Make `read` the obvious default source in every command help block and example set, while keeping `from-paths` for explicit path-stream pipelines.
-- Add one end-to-end example that starts with N-Quads on stdin and ends with `rdf pretty --format trig`, with the exact working flags shown.
-- Add an "agent readability" pass to the CLI docs: each command should state expected stdin kind, stdout kind, default wire format, accepted format aliases, and one minimal copy-pastable example.
+- Auto-detect input format for file inputs by extension is already wired (`.ttl`, `.nq`, `.trig`, …), but there is no way to force a format on a file whose extension lies. Consider a `--format` override on `read`.
