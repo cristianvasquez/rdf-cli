@@ -21,29 +21,42 @@ The executable is `rdf`.
 
 ## Reuse As A Library
 
-The package now exposes only the pipeline building blocks as a public module surface, so other applications do not need to import internal files directly.
+Four public namespaces: `sources`, `transforms`, `sinks` are the building blocks; `pipeline` composes them with provenance.
+
+Building blocks — materialize once, query many:
 
 ```js
-import { sources, transforms, sinks } from 'rdf-cli'
+import { sources, transforms } from 'rdf-cli'
 
-const source = sources.readFromGlob(['./data/**/*.ttl'], { graphFrom: 'path' })
-
-// Materialize once, then run one or more queries against the same store.
-const store = await transforms.materialize(source)
-const rows = transforms.select(
-  store,
-  'SELECT ?s ?p ?o WHERE { GRAPH ?g { ?s ?p ?o } }',
-)
-
-for (const row of rows) {
-  console.log(row.s.value, row.p.value, row.o.value)
+const store = await transforms.materialize(sources.readFromGlob(['./data/**/*.ttl']))
+for (const row of transforms.select(store, 'SELECT ?s ?o WHERE { ?s ?p ?o }')) {
+  console.log(row.s.value, row.o.value)
 }
+```
 
-const trig = await sinks.datasetToString(dataset, {
-  format: sinks.TRIG,
-  prefixes: {},
+The `pipeline` layer gives every step one shape — `Operation = (envelope) => Promise<envelope>`, where `envelope = { value, history }`. `pipe` threads the data and appends one result per step. Any op can read the history of earlier ops: `requireConformance` aborts when an upstream `validate` did not conform.
+
+```js
+import { pipeline, sinks } from 'rdf-cli'
+const { pipe, readPaths, materialize, validate, requireConformance, provenanceToDataset } = pipeline
+
+const env = await pipe(
+  readPaths(['./data/**/*.ttl']),
+  materialize,
+  validate(['./shapes.ttl']),
+  requireConformance,          // throws Abort if the data did not conform
+)()
+
+// env.value   — the current payload (quads, store, bindings, or text)
+// env.history — one result per op (kind, inputs, timing, validation verdict, ...)
+
+// Provenance is RDF: render it as PROV-O and feed it back through the tool.
+const trig = await sinks.datasetToString(provenanceToDataset(env.history), {
+  format: sinks.TRIG, prefixes: {},
 })
 ```
+
+Provenance is library-only; it never crosses a Unix pipe.
 
 ## Stream kinds
 
