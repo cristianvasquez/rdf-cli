@@ -140,19 +140,12 @@ construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine c
 type BuiltinName = String    -- ^ "shacl" | "skos".
 type ShapeSource = Pattern
 
-data Report                  -- ^ shacl-engine validation report (opaque).
-
-data ValidationResult = ValidationResult
-  { stream   :: QuadStream   -- ^ original data ++ the report in a named graph.
-  , conforms :: Bool
-  , report   :: Report
-  }
-
 resolveBuiltinShapes :: BuiltinName -> Maybe FilePath
 -- | Consumes the same 'Store' (the shacl dataset is derived from it), so validation
--- composes with the SPARQL ops over a single materialization. Costs a transient
--- second copy while shacl-engine runs.
-validate :: Store -> [ShapeSource] -> Iri {- reportGraph -} -> IO ValidationResult
+-- composes with the SPARQL ops over a single materialization. Returns the original
+-- data ++ the report in a named graph, and the 'Summary' — the verdict that travels
+-- as provenance. No bespoke result record; the caller reads the verdict from history.
+validate :: Store -> [ShapeSource] -> Iri {- reportGraph -} -> IO (QuadStream, Summary)
 
 data Violation = Violation
   { focusNode        :: String
@@ -164,12 +157,11 @@ data Violation = Violation
   }
 
 data Summary = Summary
-  { summaryConforms  :: Bool
-  , violationCount   :: Int
-  , results          :: [Violation]
+  { conforms       :: Bool
+  , violationCount :: Int
+  , violations     :: [Violation]
   }
 
-summarizeReport      :: Report -> Summary
 formatMarkdownReport :: Summary -> String {- label -} -> Text
 type Text = String
 
@@ -233,83 +225,80 @@ infixr 5 :|
 --------------------------------------------------------------------------------
 -- Operations & provenance  (proposed — the composable, lineage-tracking layer)
 --
--- The 'Cmd' algebra above is the user-facing CLI projection. Underneath, each step
--- is an 'Op': a node in a DAG. Running the DAG yields BOTH the final value and one
--- 'OpResult' per node — the provenance array the caller asked for.
---
--- The key invariant ties this layer to 'materialize': a 'QuadStream' is single-pass,
--- so any node consumed by more than one downstream node MUST be a 'Store' (multi-read).
--- Fan-out in the DAG therefore lands exactly on materialization points — extracting
--- the store is what makes a branching provenance DAG expressible in the first place.
+-- The 'Cmd' algebra above is the user-facing CLI projection (one verb per process).
+-- The library composes in a single process, and every component collapses to ONE
+-- shape: an 'Operation' threading an 'Envelope'. The envelope carries the current
+-- value plus 'history' — the operations-results array. This is a Writer (each op
+-- appends its result) that is also read (any op inspects prior results), i.e. State
+-- over a growing lineage. Provenance is a library concern only; it never crosses a
+-- Unix pipe, so nothing here is serialized between processes.
 --------------------------------------------------------------------------------
 
 type OpId = String
 
--- | The value carried on an edge between operations.
+-- | The payload flowing between operations. Heterogeneous: it changes shape as the
+-- pipeline crosses materialization boundaries (stream → store → bindings → text).
+-- 'VStore' is the multi-read value; the single-pass ones have at most one consumer.
 data Value
-  = VQuads    QuadStream     -- ^ single-pass: at most one consumer.
-  | VStore    Store          -- ^ multi-read: the legal fan-out / branch point.
-  | VBindings BindingsStream -- ^ single-pass.
-  | VReport   Report
+  = VQuads    QuadStream
+  | VStore    Store
+  | VBindings BindingsStream
   | VText     Text
 
--- | What each operation does. Extensible: a new transform is one more constructor,
--- and it composes with the rest for free because it shares the 'Value' vocabulary.
-data Op
-  = OpReadPaths   [Pattern] ReadOpts
-  | OpReadStdin
-  | OpFromPaths   ReadOpts
-  | OpMaterialize                       -- ^ QuadStream -> Store; the branch enabler.
-  | OpSelect      Query
-  | OpConstruct   Query
-  | OpValidate    [ShapeSource] Iri
-  | OpAssignGraph Iri
-  | OpDropGraph
-  | OpSkolem      Iri
-  | OpPretty      MimeType Prefixes
-  | OpTable       TableFormat
-
--- | A node: an operation applied to the outputs of its input nodes.
-data Node = Node
-  { nodeId :: OpId
-  , op     :: Op
-  , inputs :: [OpId]      -- ^ references to other nodes, forming the DAG.
-  }
-
-data Dag = Dag
-  { nodes  :: [Node]
-  , output :: OpId        -- ^ the node whose 'Value' is the pipeline result.
-  }
-
--- | Per-node provenance: what ran, over what, what came out, and measured facts.
+-- | One record appended per operation. 'inputs' records lineage by id, so even a
+-- linear run captures DAG-shaped provenance that can be reconstructed as a graph.
 data OpResult = OpResult
-  { resultId :: OpId
-  , resultOp :: Op
-  , usedIds  :: [OpId]    -- ^ prov:used (its input nodes).
-  , produced :: Value     -- ^ prov:generated.
-  , meta     :: Meta
+  { opId   :: OpId
+  , kind   :: String       -- ^ "read" | "materialize" | "validate" | ...
+  , inputs :: [OpId]       -- ^ the prior results this op consumed.
+  , meta   :: Meta
   }
 
--- | Measured facts kept in lineage. Grows independently of 'Op'.
+-- | Measured facts kept in lineage. Data-dependent fields are only filled by ops that
+-- actually materialize ('materialize', 'validate'); streaming ops leave them Nothing —
+-- the stream is still unconsumed when the envelope is passed on.
 data Meta = Meta
-  { startedAt     :: Timestamp
-  , durationMs    :: Int
-  , quadsIn       :: Maybe Int
-  , quadsOut      :: Maybe Int
-  , droppedIn     :: Maybe Int    -- ^ quads oxigraph refused (the materialize warning).
-  , metaConforms  :: Maybe Bool   -- ^ validate only.
+  { startedAt  :: Timestamp
+  , durationMs :: Int
+  , quadsIn    :: Maybe Int
+  , quadsOut   :: Maybe Int
+  , droppedIn  :: Maybe Int     -- ^ quads oxigraph refused (the materialize warning).
+  , validation :: Maybe Summary -- ^ validate only: the SHACL verdict, readable downstream.
   }
 type Timestamp = String
 
--- | Execute the DAG as a topological fold. The in-memory 'OpResult' array is the
--- runtime source of truth; the final 'Value' is the 'output' node's product.
-run :: Dag -> IO (Value, [OpResult])
+-- | What flows through the pipeline: the current value plus everything that happened.
+-- 'history' is append-only and readable — that is what lets an op react to upstream ops.
+data Envelope = Envelope
+  { value   :: Value
+  , history :: [OpResult]
+  }
 
--- | Render provenance to PROV-O RDF on demand (opt-in, off the hot path):
---   OpResult  -> prov:Activity  (prov:startedAtTime, durationMs/counts as typed literals)
---   usedIds   -> prov:used
---   produced  -> prov:generated (a prov:Entity)
---   input→output edges -> prov:wasDerivedFrom
+-- | The one shape every component collapses to: read value + history, produce the next
+-- value, append one 'OpResult'. Sources, transforms, sinks, and guards are all this.
+type Operation = Envelope -> IO Envelope
+
+-- | Left-to-right Kleisli composition. One combinator composes every component.
+pipe :: [Operation] -> Operation
+
+-- Every core function (materialize, select, construct, validate, assignGraph, dropGraph,
+-- skolemize, the sources, the sinks) lifts to an 'Operation' the same mechanical way:
+-- run it over the incoming 'value', set the new 'value', append an 'OpResult'. The core
+-- functions above are unchanged; the lift only adds provenance. Two lifts matter here:
+
+-- | 'validate' lifts so its 'Summary' lands in the appended result's 'meta.validation'.
+-- There is no bespoke return value — the verdict travels as history.
+validateOp :: [ShapeSource] -> Iri -> Operation
+
+-- | A guard is an ordinary 'Operation' that reads 'history' and may abort. This one
+-- scans for the latest 'validateOp' result and stops the pipeline when it did not
+-- conform — the "check validity, otherwise abort" use case.
+requireConformance :: Operation
+data Abort = Abort OpId String   -- ^ thrown in IO: which op aborted, and why.
+
+-- | Render 'history' to PROV-O RDF on demand (opt-in):
+--   OpResult -> prov:Activity  (prov:startedAtTime, durationMs/counts as typed literals)
+--   inputs   -> prov:used / prov:wasDerivedFrom
 provenanceToDataset :: [OpResult] -> Dataset
 
 --------------------------------------------------------------------------------
