@@ -5,11 +5,16 @@
 // (SPARQL CONSTRUCTs). Claimed/rest is marked by graph terms, reusing the
 // graph policy: the working set is the GRAPHLESS subset of the incoming
 // stream; quads that already carry a named graph were claimed upstream and
-// pass through untouched; claiming moves quads out of graphless space
+// pass through untouched; claiming moves OWNED quads out of graphless space
 // (source graph, view graphs) and the rest stays graphless for the next
 // claimer in the pipe. Precedence is therefore pipe order, by construction —
 // no order metadata exists. Making named data claimable is explicit: pipe
 // `rdf graph-drop` first.
+//
+// A claim also BORROWS a frontier (claim.js): the quads its target navigation
+// read, e.g. rdf:type. The frontier feeds the views but stays graphless in
+// the rest, so shared navigation vocabulary never starves later claimers;
+// copies land in the :frontier graph for provenance.
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 import { claim } from './claim.js'
@@ -55,17 +60,25 @@ export function loadClaimer (quads, factory = rdf) {
   return { graph, shapes, views }
 }
 
-// `graph:source` — where a claimer's claimed input is preserved for provenance.
+// `graph:source` — where a claimer's owned input is preserved for provenance.
 export function sourceGraphOf (graphIri) {
   return `${graphIri}:source`
 }
 
-// Fan-out law (spec 'projectView'): every view reads the SAME claimed set —
-// one materialization, independent queries, each deduped into a dataset. An
-// empty result means "this view matched nothing"; the view still emits.
-async function runViews (views, claimed, factory) {
+// `graph:frontier` — provenance COPIES of the borrowed quads the views were
+// fed beyond the source (source ∪ frontier = exactly the view inputs). The
+// borrowed originals stay graphless in the rest.
+export function frontierGraphOf (graphIri) {
+  return `${graphIri}:frontier`
+}
+
+// Fan-out law (spec 'projectView'): every view reads the SAME feed (owned
+// quads plus the borrowed frontier) — one materialization, independent
+// queries, each deduped into a dataset. An empty result means "this view
+// matched nothing"; the view still emits.
+async function runViews (views, feed, factory) {
   if (views.length === 0) return []
-  const store = await materialize(claimed)
+  const store = await materialize(feed)
   const results = []
   for (const view of views) {
     const quads = []
@@ -78,9 +91,9 @@ async function runViews (views, claimed, factory) {
 }
 
 // Apply one claimer to the wire: split off the graphless working set, claim
-// from it, fan the views out over the claimed side. Laws (spec 'Split'):
-// claimed ∪ rest = working, claimed ∩ rest = ∅ — sound because the working
-// set is graphless by construction here.
+// from it, fan the views out over owned ∪ borrowed. Laws (spec 'ClaimSplit'):
+// claimed ∪ rest = working, claimed ∩ rest = ∅, frontier ⊆ rest — sound
+// because the working set is graphless by construction here.
 export async function applyClaimer ({ inputQuads, claimer, factory = rdf }) {
   const working = factory.dataset()
   const passThrough = []
@@ -89,17 +102,24 @@ export async function applyClaimer ({ inputQuads, claimer, factory = rdf }) {
     else passThrough.push(quad)
   }
 
-  const { claimed, remaining } = await claim({ shapes: claimer.shapes, working, factory })
-  const views = await runViews(claimer.views, claimed, factory)
-  return { claimer, claimed, views, rest: remaining, passThrough }
+  const { claimed, frontier, remaining } = await claim({ shapes: claimer.shapes, working, factory })
+  const feed = factory.dataset([...claimed, ...frontier])
+  const views = await runViews(claimer.views, feed, factory)
+  return { claimer, claimed, frontier, views, rest: remaining, passThrough }
 }
 
-function * emitQuads ({ claimer, claimed, views, rest, passThrough }, factory) {
+function * emitQuads ({ claimer, claimed, frontier, views, rest, passThrough }, factory) {
   yield * passThrough
 
   const sourceGraph = factory.namedNode(sourceGraphOf(claimer.graph.value))
   for (const quad of claimed) {
     yield factory.quad(quad.subject, quad.predicate, quad.object, sourceGraph)
+  }
+
+  // provenance copies; the borrowed originals go out graphless with the rest
+  const frontierGraph = factory.namedNode(frontierGraphOf(claimer.graph.value))
+  for (const quad of frontier) {
+    yield factory.quad(quad.subject, quad.predicate, quad.object, frontierGraph)
   }
 
   for (const { graph, quads } of views) {
@@ -111,8 +131,8 @@ function * emitQuads ({ claimer, claimed, views, rest, passThrough }, factory) {
   yield * rest
 }
 
-// Serialize the wire channels (passThrough ‖ source ‖ views ‖ rest) into one
-// QuadStream — the same stream shape every other transform produces.
+// Serialize the wire channels (passThrough ‖ source ‖ frontier ‖ views ‖ rest)
+// into one QuadStream — the same stream shape every other transform produces.
 export function emitClaimer (result, { factory = rdf } = {}) {
   return Readable.from(emitQuads(result, factory), { objectMode: true })
 }

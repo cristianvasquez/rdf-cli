@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import rdf from 'rdf-ext'
-import { loadClaimer, applyClaimer, emitClaimer, sourceGraphOf } from '../src/transforms/claimer.js'
+import {
+  loadClaimer, applyClaimer, emitClaimer, sourceGraphOf, frontierGraphOf,
+} from '../src/transforms/claimer.js'
 
 const ns = (s) => rdf.namedNode(`http://example.org/${s}`)
 const SH = (s) => rdf.namedNode(`http://www.w3.org/ns/shacl#${s}`)
@@ -11,8 +13,9 @@ const QUERY = rdf.namedNode('urn:rdf-cli:cascade#query')
 const personGraph = ns('claimers/person')
 const upstreamGraph = ns('already/claimed')
 
-// Person claimer: claims Person type/name quads, two views — one derives a
-// label, one matches nothing in the input below.
+// Person claimer: owns Person name quads (constraint read), borrows the type
+// quads (target navigation). Two views — one derives a label, one matches
+// nothing in the input below.
 function personClaimerQuads () {
   return [
     rdf.quad(ns('PersonShape'), RDF_TYPE, SH('NodeShape'), personGraph),
@@ -26,12 +29,24 @@ function personClaimerQuads () {
   ]
 }
 
-// Claim-only claimer: reads subjects of ex:unrelated, derives nothing.
 const looseGraph = ns('claimers/loose-ends')
-function looseClaimerQuads () {
+
+// Bare navigation-only claimer: targets subjects of ex:unrelated but never
+// reads anything with a constraint — it borrows, it owns nothing.
+function bareLooseClaimerQuads () {
   return [
     rdf.quad(ns('LooseShape'), RDF_TYPE, SH('NodeShape'), looseGraph),
     rdf.quad(ns('LooseShape'), SH('targetSubjectsOf'), ns('unrelated'), looseGraph),
+  ]
+}
+
+// The opt-in ownership idiom: an explicit constraint reading the target quads
+// lands them in coverage, so the claimer takes them.
+function owningLooseClaimerQuads () {
+  return [
+    ...bareLooseClaimerQuads(),
+    rdf.quad(ns('LooseShape'), SH('property'), ns('looseP'), looseGraph),
+    rdf.quad(ns('looseP'), SH('path'), ns('unrelated'), looseGraph),
   ]
 }
 
@@ -61,7 +76,7 @@ test('loadClaimer parses one claimer: graph, shapes, views sorted by IRI', () =>
 })
 
 test('loadClaimer rejects a document with two claimers', () => {
-  assert.throws(() => loadClaimer([...personClaimerQuads(), ...looseClaimerQuads()]),
+  assert.throws(() => loadClaimer([...personClaimerQuads(), ...bareLooseClaimerQuads()]),
     /exactly one claimer.*found 2/)
 })
 
@@ -70,21 +85,24 @@ test('loadClaimer rejects a document with no claimer', () => {
 })
 
 test('loadClaimer rejects a non-IRI view subject', () => {
-  const quads = [...looseClaimerQuads(),
+  const quads = [...bareLooseClaimerQuads(),
     rdf.quad(rdf.blankNode(), QUERY, rdf.literal('CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }'), looseGraph)]
   assert.throws(() => loadClaimer(quads), /view subject must be an IRI/)
 })
 
-test('applyClaimer splits the graphless working set: partition and disjointness', async () => {
+test('applyClaimer splits the working set: partition, disjointness, borrowed frontier', async () => {
   const claimer = loadClaimer(personClaimerQuads())
-  const { claimed, rest } = await applyClaimer({ inputQuads: inputQuads(), claimer })
+  const { claimed, frontier, rest } = await applyClaimer({ inputQuads: inputQuads(), claimer })
 
-  assert.equal(claimed.size, 2, 'both Person quads claimed')
-  assert.equal(rest.size, 1, 'loose quad stays')
+  assert.equal(claimed.size, 1, 'owned: the constraint-read name quad')
+  assert.equal(frontier.size, 1, 'borrowed: the target-navigation type quad')
+  assert.equal(rest.size, 2, 'type (borrowed, stays) and the loose quad')
+
   const graphless = inputQuads().filter((q) => q.graph.termType === 'DefaultGraph')
   const union = rdf.dataset([...claimed, ...rest])
   assert.equal(union.size, graphless.length, 'claimed ∪ rest = working set')
   for (const quad of claimed) assert.ok(!rest.has(quad), 'claimed ∩ rest = ∅')
+  for (const quad of frontier) assert.ok(rest.has(quad), 'frontier ⊆ rest')
 })
 
 test('applyClaimer passes named-graph quads through untouched', async () => {
@@ -94,7 +112,7 @@ test('applyClaimer passes named-graph quads through untouched', async () => {
   assert.ok(passThrough[0].graph.equals(upstreamGraph))
 })
 
-test('every view reads the same claimed set; a view matching nothing stays present, empty', async () => {
+test('every view reads the same feed; a view matching nothing stays present, empty', async () => {
   const claimer = loadClaimer(personClaimerQuads())
   const { views } = await applyClaimer({ inputQuads: inputQuads(), claimer })
   assert.equal(views.length, 2)
@@ -102,43 +120,91 @@ test('every view reads the same claimed set; a view matching nothing stays prese
   assert.equal(views[1].quads.size, 0, 'timeline view matched nothing but is still present')
 })
 
-test('a claim-only claimer has no views', async () => {
-  const claimer = loadClaimer(looseClaimerQuads())
-  assert.deepEqual(claimer.views, [])
-  const { claimed, views } = await applyClaimer({ inputQuads: inputQuads(), claimer })
-  assert.equal(claimed.size, 1)
-  assert.deepEqual(views, [])
+test('views read the borrowed frontier too', async () => {
+  const quads = [
+    ...personClaimerQuads().filter((q) => !q.predicate.equals(QUERY)),
+    rdf.quad(ns('views/types'), QUERY, rdf.literal(
+      'CONSTRUCT { ?p <http://example.org/isA> ?c } WHERE { ?p a ?c }'), personGraph),
+  ]
+  const claimer = loadClaimer(quads)
+  const { views } = await applyClaimer({ inputQuads: inputQuads(), claimer })
+  assert.equal(views[0].quads.size, 1, 'view derived from the borrowed type quad')
 })
 
-test('emitClaimer routes the channels: pass-through, source graph, view graphs, graphless rest', async () => {
+test('a navigation-only claimer borrows but owns nothing', async () => {
+  const claimer = loadClaimer(bareLooseClaimerQuads())
+  assert.deepEqual(claimer.views, [])
+  const { claimed, frontier } = await applyClaimer({ inputQuads: inputQuads(), claimer })
+  assert.equal(claimed.size, 0, 'no constraint read anything — nothing owned')
+  assert.equal(frontier.size, 1, 'the target quad is only borrowed')
+})
+
+test('ownership of target quads is opt-in via an explicit constraint', async () => {
+  const claimer = loadClaimer(owningLooseClaimerQuads())
+  const { claimed, frontier } = await applyClaimer({ inputQuads: inputQuads(), claimer })
+  assert.equal(claimed.size, 1, 'sh:path ex:unrelated lands the quad in coverage')
+  assert.equal(frontier.size, 0, 'owned quads are not borrowed')
+})
+
+test('emitClaimer routes the channels: pass-through, source, frontier, views, graphless rest', async () => {
   const claimer = loadClaimer(personClaimerQuads())
   const result = await applyClaimer({ inputQuads: inputQuads(), claimer })
   const emitted = await collect(emitClaimer(result))
 
   const byGraph = (iri) => emitted.filter((q) => q.graph.value === iri)
   assert.equal(byGraph(upstreamGraph.value).length, 1, 'upstream claim untouched')
-  assert.equal(byGraph(sourceGraphOf(personGraph.value)).length, 2, 'claimed quads in source graph')
+  assert.equal(byGraph(sourceGraphOf(personGraph.value)).length, 1, 'owned quad in source graph')
+  assert.equal(byGraph(frontierGraphOf(personGraph.value)).length, 1, 'borrowed copy in frontier graph')
   assert.equal(byGraph(ns('views/card').value).length, 1, 'view quads in the view graph')
   const graphless = emitted.filter((q) => q.graph.termType === 'DefaultGraph')
-  assert.equal(graphless.length, 1, 'rest stays graphless')
+  assert.equal(graphless.length, 2, 'rest (incl. borrowed original) stays graphless')
 })
 
 test('a later claimer in the pipe cannot take an earlier claimer\'s quads', async () => {
   const person = loadClaimer(personClaimerQuads())
-  const loose = loadClaimer(looseClaimerQuads())
+  const loose = loadClaimer(owningLooseClaimerQuads())
 
   const afterPerson = await applyClaimer({ inputQuads: inputQuads(), claimer: person })
   const afterLoose = await applyClaimer({
     inputQuads: emitClaimer(afterPerson), claimer: loose,
   })
 
-  assert.equal(afterLoose.claimed.size, 1, 'claims the loose quad from the graphless rest')
-  assert.equal(afterLoose.rest.size, 0)
-  // person's source + view quads plus the upstream claim all arrive named
+  assert.equal(afterLoose.claimed.size, 1, 'owns the loose quad from the graphless rest')
+  assert.equal(afterLoose.rest.size, 1, 'the borrowed type quad remains graphless')
+  // person's source + frontier copy + view quad plus the upstream claim arrive named
   assert.equal(afterLoose.passThrough.length, 4, 'earlier claims pass through untouchable')
 
   const emitted = await collect(emitClaimer(afterLoose))
   const graphs = new Set(emitted.map((q) => q.graph.value))
   assert.ok(graphs.has(sourceGraphOf(personGraph.value)))
   assert.ok(graphs.has(sourceGraphOf(looseGraph.value)))
+})
+
+test('regression: two claimers over the same class both claim their content', async () => {
+  // both target ex:Person, read different properties — the borrowed frontier
+  // keeps the shared type quad available to the second claimer
+  function metaphor (name, path) {
+    const g = ns(`claimers/${name}`)
+    return loadClaimer([
+      rdf.quad(ns(`${name}Shape`), RDF_TYPE, SH('NodeShape'), g),
+      rdf.quad(ns(`${name}Shape`), SH('targetClass'), ns('Person'), g),
+      rdf.quad(ns(`${name}Shape`), SH('property'), ns(`${name}P`), g),
+      rdf.quad(ns(`${name}P`), SH('path'), ns(path), g),
+    ])
+  }
+  const input = [
+    rdf.quad(ns('alice'), RDF_TYPE, ns('Person')),
+    rdf.quad(ns('alice'), ns('name'), rdf.literal('Alice')),
+    rdf.quad(ns('alice'), ns('born'), rdf.literal('1990')),
+  ]
+
+  const afterCard = await applyClaimer({ inputQuads: input, claimer: metaphor('card', 'name') })
+  assert.equal(afterCard.claimed.size, 1, 'card owns the name quad')
+
+  const afterTimeline = await applyClaimer({
+    inputQuads: emitClaimer(afterCard), claimer: metaphor('timeline', 'born'),
+  })
+  assert.equal(afterTimeline.claimed.size, 1, 'timeline still finds Person targets and owns born')
+  assert.equal(afterTimeline.rest.size, 1, 'the shared type quad is owned by nobody')
+  assert.ok([...afterTimeline.rest][0].predicate.equals(RDF_TYPE))
 })

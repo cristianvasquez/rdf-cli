@@ -178,10 +178,12 @@ construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine c
 -- Claimed/rest is marked by graph terms, reusing the graph policy above: the
 -- working set is the GRAPHLESS subset of the incoming stream; quads that
 -- already carry a named graph were claimed upstream and pass through
--- untouched; claiming moves quads out of graphless space (source graph, view
--- graphs); the rest stays graphless for the next claimer. Hence a theorem,
--- not a runtime check: a later claimer can never take an earlier claimer's
--- quads.
+-- untouched; claiming moves OWNED quads out of graphless space (source graph,
+-- view graphs); the rest stays graphless for the next claimer. Hence a
+-- theorem, not a runtime check: a later claimer can never take an earlier
+-- claimer's quads. A claim also BORROWS a frontier — the quads its target
+-- navigation read (e.g. rdf:type) — which feeds the views but stays graphless
+-- in the rest, so shared navigation vocabulary never starves later claimers.
 --
 -- Views do not fold: every view reads the SAME claimed set, independently —
 -- order-insensitive, parallelizable, each naming its own output graph. The
@@ -205,23 +207,29 @@ data WorkingSet                   -- ^ the graphless subset of the wire; claimab
 splitClaimable :: QuadStream -> (Graphless QuadStream, QuadStream)
 mkWorkingSet   :: Graphless QuadStream -> IO WorkingSet
 data Claims       (c :: ClaimId)  -- ^ claim rules for one claimer (currently SHACL shapes).
-data ClaimedSet   (c :: ClaimId)  -- ^ subset read by 'Claims c'.
-data ProjectedSet                 -- ^ derived quads emitted from a claimed set.
+data ClaimedSet   (c :: ClaimId)  -- ^ owned by 'Claims c': quads a constraint read.
+data FrontierSet  (c :: ClaimId)  -- ^ borrowed by 'Claims c': quads target navigation read.
+data ProjectedSet                 -- ^ derived quads emitted from a view feed.
 
--- | A pair witnessing a lossless coproduct decomposition of a working set:
--- both sides exist together, and under their forgetful view as sets of quads
--- they cover the input without overlap.
-data Split left right = Split
-  { claimed   :: left
-  , remainder :: right
+-- | The decomposition one claim performs. Owned quads leave graphless space;
+-- borrowed quads are read (target navigation, view feeds) but stay in the
+-- remainder — taking navigation quads would starve later claimers of shared
+-- vocabulary like rdf:type.
+data ClaimSplit c = ClaimSplit
+  { claimed   :: ClaimedSet c
+  , frontier  :: FrontierSet c
+  , remainder :: WorkingSet
   }
 
-claim :: Claims c -> WorkingSet -> IO (Split (ClaimedSet c) WorkingSet)
--- Laws for @Split claimed remainder <- claim claims input@:
+claim :: Claims c -> WorkingSet -> IO (ClaimSplit c)
+-- Laws for @ClaimSplit claimed frontier remainder <- claim claims input@:
 --   (viewed as sets of quads)
 --   partition: claimed ∪ remainder = input
 --   disjoint:  claimed ∩ remainder = ∅
--- Both laws lean on 'WorkingSet' being graphless (see 'mkWorkingSet').
+--   borrowed:  frontier ⊆ remainder, frontier ∩ claimed = ∅
+-- The partition laws lean on 'WorkingSet' being graphless (see 'mkWorkingSet').
+-- Ownership of navigation quads is opt-in: a shape that wants to TAKE its
+-- target quads reads them with an explicit constraint (e.g. [ sh:path rdf:type ]).
 
 data Construct = ConstructQuery Query
 
@@ -229,8 +237,13 @@ data Construct = ConstructQuery Query
 -- WHERE cannot overreach the claim.
 runConstruct :: Construct -> Dataset -> IO Dataset
 
-claimedToDataset :: ClaimedSet c -> Dataset
-asProjected      :: Dataset -> ProjectedSet
+-- | What a view may read: the owned quads plus the borrowed frontier. The
+-- claim boundary stays explicit — never the whole working set.
+data ViewFeed (c :: ClaimId)
+
+viewFeed      :: ClaimedSet c -> FrontierSet c -> ViewFeed c
+feedToDataset :: ViewFeed c -> Dataset
+asProjected   :: Dataset -> ProjectedSet
 
 -- | One named aspect of a claimer: a CONSTRUCT and the graph its output
 -- lands in. Naming the output is what lets several views coexist.
@@ -239,11 +252,11 @@ data View = View
   , viewQuery :: Construct
   }
 
--- Law (fan-out): every view reads the SAME claimed set. Views are
--- independent — evaluation order is unobservable, so they may run in
--- parallel and 'loadClaimer' may sort them freely.
--- projectView v claimed = asProjected <$> runConstruct (viewQuery v) (claimedToDataset claimed)
-projectView :: View -> ClaimedSet c -> IO ProjectedSet
+-- Law (fan-out): every view reads the SAME feed. Views are independent —
+-- evaluation order is unobservable, so they may run in parallel and
+-- 'loadClaimer' may sort them freely.
+-- projectView v feed = asProjected <$> runConstruct (viewQuery v) (feedToDataset feed)
+projectView :: View -> ViewFeed c -> IO ProjectedSet
 
 -- | Sequential CONSTRUCT pipeline — a DIFFERENT operation from a projection's
 -- view derivation: a transformation chain (rewrite IRIs, reshape, migrate).
@@ -259,18 +272,20 @@ data Claimer (c :: ClaimId) = Claimer
   , claimerViews  :: [View]  -- ^ [] => claim-only.
   }
 
-sourceGraphOf :: Iri -> Iri
+sourceGraphOf   :: Iri -> Iri
+frontierGraphOf :: Iri -> Iri
 
 data ClaimerStep c = ClaimerStep
-  { stepClaimer :: Claimer c
-  , stepSource  :: ClaimedSet c
-  , stepViews   :: [(Iri, ProjectedSet)]
+  { stepClaimer  :: Claimer c
+  , stepSource   :: ClaimedSet c
+  , stepFrontier :: FrontierSet c
+  , stepViews    :: [(Iri, ProjectedSet)]
     -- ^ aligned 1:1 with 'claimerViews'; an empty 'ProjectedSet' means "this
     -- view matched nothing", still distinguishable per view.
   }
 
 -- runClaimer cl ws = claim (claimerClaims cl) ws, then fan the views out over
--- the claimed side; the remainder is the graphless rest for the wire.
+-- 'viewFeed' claimed frontier; the remainder is the graphless rest for the wire.
 runClaimer :: Claimer c -> WorkingSet -> IO (ClaimerStep c, WorkingSet)
 
 data Some (f :: ClaimId -> Type) where
@@ -279,10 +294,16 @@ data Some (f :: ClaimId -> Type) where
 type SomeClaimer = Some Claimer
 
 -- The wire around one claimer: upstream claims pass through untouched, then
--- the claimer's own channels.
-data WireChannel = PassThroughChannel | SourceChannel | ViewChannel | RestChannel
+-- the claimer's own channels. The frontier channel carries COPIES in the
+-- :frontier graph — provenance of what the views were fed beyond the source
+-- (source ∪ frontier = exactly the view inputs). The borrowed originals stay
+-- graphless in the rest, so frontier is the one channel whose quads appear
+-- twice on the wire.
+data WireChannel
+  = PassThroughChannel | SourceChannel | FrontierChannel | ViewChannel | RestChannel
 
--- claimerShape = PassThroughChannel ‖ SourceChannel ‖ Many ViewChannel ‖ RestChannel
+-- claimerShape =
+--   PassThroughChannel ‖ SourceChannel ‖ FrontierChannel ‖ Many ViewChannel ‖ RestChannel
 claimerShape :: StreamShape WireChannel
 
 data ClaimerResult = ClaimerResult
@@ -299,8 +320,8 @@ loadClaimer :: Dataset -> Either Error SomeClaimer
 applyClaimer :: SomeClaimer -> QuadStream -> IO ClaimerResult
 
 -- Serializes the channels: pass-through unchanged, claimed → source graph,
--- each view → its own graph, rest stays graphless. The CLI verb is 'Claim'
--- in the Cmd algebra below.
+-- frontier copies → frontier graph, each view → its own graph, rest stays
+-- graphless. The CLI verb is 'Claim' in the Cmd algebra below.
 emitClaimer :: ClaimerResult -> QuadStream
 
 -- SHACL validation.
@@ -539,10 +560,12 @@ mkWorkingSet = manifestOnly
 claim = manifestOnly
 runConstruct = manifestOnly
 chainConstructs = manifestOnly
-claimedToDataset = manifestOnly
+viewFeed = manifestOnly
+feedToDataset = manifestOnly
 asProjected = manifestOnly
 projectView = manifestOnly
 sourceGraphOf = manifestOnly
+frontierGraphOf = manifestOnly
 runClaimer = manifestOnly
 claimerShape = manifestOnly
 loadClaimer = manifestOnly

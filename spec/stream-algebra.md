@@ -55,9 +55,16 @@ What makes this sound is that claimed-vs-rest is marked by the graph term
 itself, reusing the graph policy above:
 
 - the working set is the **graphless** subset of the incoming stream;
-- claiming moves quads **out of** graphless space — claimed quads land in the
-  claimer's `:source` graph (provenance), each view's output lands in the
-  view's own graph;
+- claiming moves **owned** quads (the ones a constraint read) out of graphless
+  space — they land in the claimer's `:source` graph (provenance), and each
+  view's output lands in the view's own graph;
+- a claim also **borrows** a frontier: the quads its target navigation read
+  (e.g. `rdf:type` for `sh:targetClass`). The frontier feeds the views but
+  stays graphless in the rest — shared navigation vocabulary never starves
+  later claimers targeting the same class. Copies land in the `:frontier`
+  graph, so `:source` ∪ `:frontier` is exactly what the views were fed. A
+  shape that wants to *own* its target quads says so with an explicit
+  constraint (e.g. `[ sh:path rdf:type ]`);
 - the rest stays graphless, still claimable by the next claimer;
 - quads that already carry a named graph were claimed upstream and pass
   through untouched.

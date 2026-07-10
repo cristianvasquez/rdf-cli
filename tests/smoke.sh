@@ -130,7 +130,9 @@ printf '\nclaim\n'
 
 out=$($CLI read "$ROOT/tests/fixtures/person-valid.ttl" \
   | $CLI claim "$ROOT/tests/fixtures/person-claimer.trig")
-assert_contains "$out" "<urn:claimers:person:source>" "claim: claimed quads land in the source graph"
+assert_contains "$out" "<urn:claimers:person:source>" "claim: owned quads land in the source graph"
+assert_contains "$out" "<urn:claimers:person:frontier>" "claim: borrowed navigation quads copied to the frontier graph"
+assert_lines "$(printf '%s\n' "$out" | grep 'syntax-ns#type')" 2 "claim: borrowed type quad appears twice (frontier copy + graphless original)"
 assert_contains "$out" "<urn:views:person-card>" "claim: view quads land in the view graph"
 assert_contains "$out" "label" "claim: view derived the label"
 assert_contains "$out" '"30"' "claim: unclaimed age quad passes through"
@@ -139,7 +141,7 @@ out=$($CLI read "$ROOT/tests/fixtures/person-valid.ttl" \
   | $CLI claim "$ROOT/tests/fixtures/person-claimer.trig" \
   | $CLI claim "$ROOT/tests/fixtures/person-claimer.trig")
 assert_contains "$out" "<urn:claimers:person:source>" "claim twice: first claim survives the second"
-assert_lines "$(printf '%s\n' "$out" | grep 'person:source')" 2 "claim twice: second pass claims nothing new (claims pass through)"
+assert_lines "$(printf '%s\n' "$out" | grep 'person:source')" 1 "claim twice: second pass owns nothing new (claims pass through)"
 
 if printf '' | $CLI claim "$ROOT/tests/fixtures/person-valid.ttl" 2>"$TMP/claim.err"; then
   fail "claim: expected a document without a claimer graph to fail"

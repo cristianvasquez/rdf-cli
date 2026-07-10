@@ -1,11 +1,15 @@
-// Claim = shacl-engine coverage + the target-navigation patch.
+// Claim = owned + borrowed (spec/manifest.hs 'ClaimSplit').
 //
-// Coverage marks a quad claimed when a constraint reads its value. Target
-// resolution also READS quads (?focus rdf:type C for sh:targetClass, the
-// (s, p, o) triples for sh:targetSubjectsOf / sh:targetObjectsOf) but those
-// reads never land in the coverage report — that gap is why claim modules
-// used to carry [ sh:path rdf:type ] boilerplate. Patching it here, outside
-// the engine, removes both.
+// Owned ('claimed'): quads a constraint read — shacl-engine coverage. These
+// leave graphless space.
+// Borrowed ('frontier'): quads target resolution read (?focus rdf:type C for
+// sh:targetClass, the (s, p, o) triples for sh:targetSubjectsOf /
+// sh:targetObjectsOf). The engine never puts those reads in coverage, so they
+// are collected here. They feed the views but STAY in the remainder — taking
+// navigation quads would starve later claimers of shared vocabulary like
+// rdf:type. A shape that wants to own its target quads says so with an
+// explicit constraint (e.g. [ sh:path rdf:type ]), which lands them in
+// coverage.
 import rdf from 'rdf-ext'
 import { Validator } from 'shacl-engine'
 
@@ -22,33 +26,36 @@ function shapeTargets (shapes) {
   return targets
 }
 
-// Split `working` into the quads the shapes claim and the quads that don't.
-// Laws (spec/manifest.hs Split): claimed ∪ remaining = working, claimed ∩ remaining = ∅.
+// Split `working` into { claimed, frontier, remaining }.
+// Laws (spec/manifest.hs ClaimSplit): claimed ∪ remaining = working,
+// claimed ∩ remaining = ∅, frontier ⊆ remaining, frontier ∩ claimed = ∅.
 // Precondition: `working` is graphless (spec 'WorkingSet') — applyClaimer
 // guarantees it by selecting the graphless subset of the wire. Named-graph
-// quads would break both laws: coverage comes back as bare triples that no
-// longer match the originals.
+// quads would break the partition laws: coverage comes back as bare triples
+// that no longer match the originals.
 export async function claim ({ shapes, working, factory = rdf }) {
   const validator = new Validator(shapes, { coverage: true, factory })
   const report = await validator.validate({ dataset: working })
 
-  // coverage quads flattened to (s, p, o), matching the default-graph working set
+  // owned: coverage quads flattened to (s, p, o)
   const claimed = factory.dataset(report.coverage().map((quad) =>
     factory.quad(quad.subject, quad.predicate, quad.object)))
 
-  // target patch: claim the quads target resolution read
+  // borrowed: the quads target resolution read, minus anything owned
   const targets = shapeTargets(shapes)
   const typeTerm = factory.namedNode(RDF_TYPE)
+  const frontier = factory.dataset()
   for (const cls of targets.classes) {
-    for (const quad of working.match(null, typeTerm, cls)) claimed.add(quad)
+    for (const quad of working.match(null, typeTerm, cls)) frontier.add(quad)
   }
   for (const p of targets.subjectsOf) {
-    for (const quad of working.match(null, p, null)) claimed.add(quad)
+    for (const quad of working.match(null, p, null)) frontier.add(quad)
   }
   for (const p of targets.objectsOf) {
-    for (const quad of working.match(null, p, null)) claimed.add(quad)
+    for (const quad of working.match(null, p, null)) frontier.add(quad)
   }
+  for (const quad of claimed) frontier.delete(quad)
 
   const remaining = factory.dataset([...working].filter((quad) => !claimed.has(quad)))
-  return { claimed, remaining }
+  return { claimed, frontier, remaining }
 }
