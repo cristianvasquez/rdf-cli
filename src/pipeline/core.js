@@ -4,6 +4,13 @@
 // Value), `history` is the append-only, readable operations-results array. Composing
 // operations threads the envelope; the final envelope is the deliverable.
 //
+// Typed contract (spec/manifest.hs 'Op a b' = Kleisli over State-in-IO): JS
+// cannot carry the types, so it carries them at runtime as the tagged Value
+// sum below. Each op's expectValue call is the runtime projection of its
+// 'Op' input type, and `pipe` is (>>>) on 'Op' — a composition the spec
+// rejects as a type error is exactly one this file rejects at runtime with a
+// TypeError.
+//
 // Provenance is library-only: nothing here is serialized across a Unix pipe.
 
 // --- Value: the heterogeneous payload flowing between operations ---

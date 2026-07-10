@@ -16,7 +16,10 @@ import { Value, expectValue, operation, Abort } from './core.js'
 const asReadable = (value, op) => toReadable(expectValue(value, 'quads', op).stream)
 const asStore = (value, op) => expectValue(value, 'store', op).store
 
-// --- Sources ---
+// Each op's spec type (manifest.hs) is noted inline; the expectValue tag in
+// the body is that type's runtime projection.
+
+// --- Sources: Op () QuadStream ---
 export const readPaths = (patterns, opts = {}) =>
   operation('read', () => ({
     value: Value.quads(Readable.from(readFromGlob(patterns, opts), { objectMode: true })),
@@ -27,6 +30,8 @@ export const readStdin = operation('read', async () => ({
 }))
 
 // --- Materialization + SPARQL ---
+// materialize: Op QuadStream Store; select: Op Store BindingsStream;
+// construct: Op Store QuadStream
 export const materialize = operation('materialize', async (env) => {
   const store = await toStore(asReadable(env.value, 'materialize'))
   return { value: Value.store(store), meta: getMaterializeStats(store) }
@@ -42,14 +47,14 @@ export const construct = (query) =>
     value: Value.quads(sparqlConstruct(asStore(env.value, 'construct'), query)),
   }))
 
-// --- SHACL: the verdict travels as provenance (meta.validation) ---
+// --- SHACL: Op Store QuadStream — the verdict travels as provenance (meta.validation) ---
 export const validate = (shapeSources, opts = {}) =>
   operation('validate', async (env) => {
     const { stream, summary, stats = {} } = await shaclValidate(asStore(env.value, 'validate'), shapeSources, opts)
     return { value: Value.quads(stream), meta: { ...stats, validation: summary } }
   })
 
-// --- Streaming graph/skolem transforms ---
+// --- Streaming graph/skolem transforms: Op QuadStream QuadStream ---
 export const assignGraph = (iri) =>
   operation('graph-assign', (env) => ({
     value: Value.quads(asReadable(env.value, 'graph-assign').pipe(assignGraphTransform(iri))),
@@ -64,7 +69,7 @@ export const skolem = (baseIri) =>
     value: Value.quads(asReadable(env.value, 'skolem').pipe(skolemize(baseIri))),
   }))
 
-// --- Guard: read prior provenance, abort on non-conformance ---
+// --- Guard: Op a a — read prior provenance, abort on non-conformance ---
 export const requireConformance = operation('require-conformance', (env) => {
   const last = [...env.history].reverse().find((r) => r.kind === 'validate')
   const v = last?.meta.validation

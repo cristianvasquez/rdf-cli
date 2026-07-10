@@ -2,6 +2,8 @@
 {-# LANGUAGE DuplicateRecordFields  #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE TypeFamilies           #-}
 
 -- | Type-level manifest of rdf-cli.
 --
@@ -23,6 +25,9 @@
 
 module RdfCli.Manifest where
 
+import Control.Arrow (Kleisli)
+import Control.Category (Category)
+import Control.Monad.Trans.State (StateT)
 import Data.Kind (Type)
 
 --------------------------------------------------------------------------------
@@ -155,6 +160,8 @@ type Query = String
 -- N-Quads wire carries no types.
 newtype Graphless a = Graphless a
 
+-- Law (split idempotent): dropGraph ∘ fromGraphless = id on 'Graphless', and
+-- dropGraph is idempotent on the wire — dropping twice is dropping once.
 fromGraphless :: Graphless a -> a
 
 assignGraph :: Iri -> QuadPipe      -- ^ graphless → the named graph; existing graphs kept.
@@ -181,7 +188,13 @@ construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine c
 -- untouched; claiming moves OWNED quads out of graphless space (source graph,
 -- view graphs); the rest stays graphless for the next claimer. Hence a
 -- theorem, not a runtime check: a later claimer can never take an earlier
--- claimer's quads. A claim also BORROWS a frontier — the quads its target
+-- claimer's quads. Half of that is the ArrowChoice fusion law — viewing the
+-- wire as Stream (Either graphless named) ('splitClaimable'), 'applyClaimer'
+-- acts as @left f@, and @left f >>> left g = left (f >>> g)@: composed
+-- claimers only ever touch the graphless summand. The other half is
+-- 'runClaimer' itself: owned quads come out NAMED (moved to the right
+-- summand), so composition is monotone. 'dropGraph' is the explicit
+-- injection back into the left summand. A claim also BORROWS a frontier — the quads its target
 -- navigation read (e.g. rdf:type) — which feeds the views but stays graphless
 -- in the rest, so shared navigation vocabulary never starves later claimers.
 --
@@ -252,18 +265,23 @@ data View = View
   , viewQuery :: Construct
   }
 
--- Law (fan-out): every view reads the SAME feed. Views are independent —
--- evaluation order is unobservable, so they may run in parallel and
--- 'loadClaimer' may sort them freely.
+-- Law (fan-out): 'runViews' is 'traverse' over the views, and its effects
+-- COMMUTE — every view reads the same feed, none reads another's output.
+-- Commutativity is the one word that licenses parallelism and loadClaimer's
+-- free sorting. (JS: a loop that could be Promise.all.)
 -- projectView v feed = asProjected <$> runConstruct (viewQuery v) (feedToDataset feed)
+-- runViews vs feed   = traverse (\v -> (viewGraph v ,) <$> projectView v feed) vs
 projectView :: View -> ViewFeed c -> IO ProjectedSet
+runViews    :: [View] -> ViewFeed c -> IO [(Iri, ProjectedSet)]
 
--- | Sequential CONSTRUCT pipeline — a DIFFERENT operation from a projection's
--- view derivation: a transformation chain (rewrite IRIs, reshape, migrate).
--- Order is significant; step n+1 sees only step n's output. Declared so the
--- algebra names the use case; deliberately unimplemented in the library — the
--- CLI already covers it by piping @rdf construct@ ('Construct' via ':>').
--- chainConstructs cs d0 = foldM (flip runConstruct) d0 cs
+-- | Sequential CONSTRUCT pipeline — a DIFFERENT operation from a claimer's
+-- view fan-out, and the dichotomy has standard names: the fan-out is
+-- 'traverse' in a commuting applicative ('runViews' below); the chain is the
+-- Kleisli-composition monoid — order significant, step n+1 sees only step
+-- n's output. Declared so the algebra names the use case; deliberately
+-- unimplemented in the library — the CLI already covers it by piping
+-- @rdf construct@ ('Construct' via ':>').
+-- chainConstructs = foldr (\c k -> runConstruct c >=> k) pure
 chainConstructs :: [Construct] -> Dataset -> IO Dataset
 
 data Claimer (c :: ClaimId) = Claimer
@@ -412,38 +430,73 @@ data Cmd (i :: StreamKind) (o :: StreamKind) where
   Pretty      :: Cmd 'NQuads 'RDF                     -- ^ emits re-readable serialized RDF.
   Table       :: Cmd 'JSONLinesBindings 'Text
 
--- | A pipeline is a chain of commands whose wire kinds line up end to end.
+-- Law (Pretty/Read): a section–retraction pair UP TO blank-node relabeling —
+-- read ∘ pretty yields an isomorphic dataset, not an equal one (parsers mint
+-- fresh bnode labels; equality holds for skolemized data). The converse never
+-- holds: pretty ∘ read normalizes formatting.
+
+-- | Denotation of wire kinds: what carries each kind in-process. (The object
+-- mapping of the 'foldPipeline' functor.)
+type family Carrier (k :: StreamKind) :: Type where
+  Carrier 'RDF               = Stream Byte
+  Carrier 'NQuads            = QuadStream
+  Carrier 'JSONLinesBindings = BindingsStream
+  Carrier 'PathLines         = PathStream
+  Carrier 'Text              = Stream Line
+
+-- | A pipeline is a path of commands whose wire kinds line up end to end —
+-- the free category over the 'Cmd' quiver. Associativity and identity of
+-- '(>>>)' hold by the free construction; no law comments needed.
 data Pipeline (i :: StreamKind) (o :: StreamKind) where
-  Last :: Cmd i o -> Pipeline i o
+  Done :: Pipeline i i                              -- ^ identity.
   (:>) :: Cmd i m -> Pipeline m o -> Pipeline i o
 infixr 5 :>
 
--- Well-typed:   Read :> Select q :> Last Table        :: Pipeline 'RDF 'Text
--- Ill-typed:    Read :> Last Table   -- NQuads ≠ JSONLinesBindings, rejected.
+-- | Append whole pipelines: reusable fragments (a standard ingest prefix, a
+-- standard validation suffix) compose instead of being re-spelled.
+(>>>) :: Pipeline i m -> Pipeline m o -> Pipeline i o
+
+-- | The interpreter is the free category's universal property: give each
+-- 'Cmd' a meaning in ANY target category k and the pipeline's meaning
+-- follows. k = Kleisli IO runs it; k = Kleisli OpM (the 'Op' arrow below)
+-- records provenance while running — making "the Cmd algebra is the CLI
+-- projection of the library layer" a functor rather than a comment.
+foldPipeline
+  :: Category k
+  => (forall a b. Cmd a b -> k (Carrier a) (Carrier b))
+  -> Pipeline i o -> k (Carrier i) (Carrier o)
+
+-- Well-typed:   Read :> Select q :> Table :> Done    :: Pipeline 'RDF 'Text
+-- Ill-typed:    Read :> Table :> Done   -- NQuads ≠ JSONLinesBindings, rejected.
 
 --------------------------------------------------------------------------------
 -- Operations & provenance  (proposed — the composable, lineage-tracking layer)
 --
--- The 'Cmd' algebra above is the user-facing CLI projection (one verb per process).
--- The library composes in a single process, and every component collapses to ONE
--- shape: an 'Operation' threading an 'Envelope'. The envelope carries the current
--- value plus 'history' — the operations-results array. This is a Writer (each op
--- appends its result) that is also read (any op inspects prior results), i.e. State
--- over a growing lineage. Provenance is a library concern only; it never crosses a
--- Unix pipe, so nothing here is serialized between processes.
+-- The 'Cmd' algebra above is the user-facing CLI projection (one verb per
+-- process). The library composes in a single process, and every component
+-- collapses to ONE arrow: 'Op', a Kleisli arrow over State-in-IO — the
+-- lineage is readable (any op inspects prior results) and appendable (each
+-- op records one result). Provenance is a library concern only; it never
+-- crosses a Unix pipe, so nothing here is serialized between processes.
+--
+-- JS traceability (src/pipeline/core.js): JS cannot carry these types, so it
+-- carries them at runtime as a tagged value sum ('quads' | 'store' | ...).
+-- Each expectValue call in the JS is the runtime projection of an 'Op' type
+-- annotation here, and core.js's pipe is '(>>>)' on 'Op'. A composition this
+-- spec rejects as a type error is exactly one the JS rejects at runtime with
+-- a TypeError — the same property 'Cmd' has on the wire, inside the library.
 --------------------------------------------------------------------------------
 
-type OpId = String
+type OpId    = String
+type Lineage = [OpResult]
 
--- | The payload flowing between operations. Heterogeneous: it changes shape as the
--- pipeline crosses materialization boundaries (stream → store → bindings → text).
--- 'VStore' is the multi-read value; the single-pass ones have at most one consumer.
-data Value
-  = VEmpty
-  | VQuads    QuadStream
-  | VStore    Store
-  | VBindings BindingsStream
-  | VText     Text
+-- | Lineage readable (get) and appendable (modify): State over a growing
+-- lineage, in IO.
+type OpM = StateT Lineage IO
+
+-- | THE one component shape. Sources, transforms, sinks, and guards are all
+-- 'Op'; composing a Store-consumer after a Text-producer is unwritable.
+type Op a b = Kleisli OpM a b
 
 -- | One record appended per operation. 'inputs' records lineage by id, so even a
 -- linear run captures DAG-shaped provenance that can be reconstructed as a graph.
@@ -479,39 +532,35 @@ data Meta = Meta
   }
 type Timestamp = String
 
--- | What flows through the pipeline: the current value plus everything that happened.
--- 'history' is append-only and readable — that is what lets an op react to upstream ops.
-data Envelope = Envelope
-  { value   :: Value
-  , history :: [OpResult]
-  }
+-- | The one lifting combinator: run the core function over the input, append
+-- one 'OpResult' (fresh id, kind, lineage, measured 'Meta'). The core
+-- functions above are unchanged; the lift only adds provenance.
+record :: OpKind -> (a -> IO (b, Meta)) -> Op a b
 
--- | The one shape every component collapses to: read value + history, produce the next
--- value, append one 'OpResult'. Sources, transforms, sinks, and guards are all this.
-type Operation = Envelope -> IO Envelope
+-- Representative typed ops, each 'record' over its core function. Their JS
+-- twins live in src/pipeline/operations.js with the matching expectValue tag.
+readOp        :: [Pattern] -> Op () QuadStream
+materializeOp :: Op QuadStream Store
+selectOp      :: Query -> Op Store BindingsStream
+constructOp   :: Query -> Op Store QuadStream
 
--- | Left-to-right Kleisli composition. One combinator composes every component.
-pipe :: [Operation] -> Operation
+-- | 'validate' lifts so its 'Summary' lands in the appended result's
+-- 'meta.validation'. There is no bespoke return value — the verdict travels
+-- as lineage.
+validateOp :: [ShapeSource] -> Iri -> Op Store QuadStream
 
--- Every core function (materialize, select, construct, validate, assignGraph, dropGraph,
--- skolemize, the sources, the sinks) lifts to an 'Operation' the same mechanical way:
--- run it over the incoming 'value', set the new 'value', append an 'OpResult'. The core
--- functions above are unchanged; the lift only adds provenance. Two lifts matter here:
-
--- | 'validate' lifts so its 'Summary' lands in the appended result's 'meta.validation'.
--- There is no bespoke return value — the verdict travels as history.
-validateOp :: [ShapeSource] -> Iri -> Operation
-
--- | A guard is an ordinary 'Operation' that reads 'history' and may abort. This one
--- scans for the latest 'validateOp' result and stops the pipeline when it did not
--- conform — the "check validity, otherwise abort" use case.
-requireConformance :: Operation
+-- | A guard is an ordinary 'Op' that reads the lineage and may abort: it
+-- scans for the latest 'validateOp' result and stops the pipeline when it
+-- did not conform — the "check validity, otherwise abort" use case.
+requireConformance :: Op a a
 data Abort = Abort OpId String   -- ^ thrown in IO: which op aborted, and why.
 
--- | Render 'history' to PROV-O RDF on demand (opt-in):
+-- | Render lineage to PROV-O RDF on demand (opt-in):
 --   OpResult -> prov:Activity  (prov:startedAtTime, durationMs/counts as typed literals)
 --   inputs   -> prov:used / prov:wasDerivedFrom
-provenanceToDataset :: [OpResult] -> Dataset
+-- A monoid homomorphism (Lineage, ++) → (Dataset, ∪): rendering history
+-- incrementally as you go equals rendering it all at the end.
+provenanceToDataset :: Lineage -> Dataset
 
 --------------------------------------------------------------------------------
 -- Public library surface  (src/index.js)
@@ -519,7 +568,7 @@ provenanceToDataset :: [OpResult] -> Dataset
 --   import { sources, transforms, sinks, pipeline } from 'rdf-cli'
 --
 -- Only these four namespaces are exported; command modules stay internal.
--- 'pipeline' is the Operation/Envelope layer above; the others are its building blocks.
+-- 'pipeline' is the 'Op' layer above; the others are its building blocks.
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -564,6 +613,7 @@ viewFeed = manifestOnly
 feedToDataset = manifestOnly
 asProjected = manifestOnly
 projectView = manifestOnly
+runViews = manifestOnly
 sourceGraphOf = manifestOnly
 frontierGraphOf = manifestOnly
 runClaimer = manifestOnly
@@ -588,7 +638,13 @@ writeTable = manifestOnly
 collectDataset = manifestOnly
 readLines = manifestOnly
 
-pipe = manifestOnly
+(>>>) = manifestOnly
+foldPipeline _ _ = manifestOnly   -- eta-expanded: the rank-2 argument must be bound.
+record = manifestOnly
+readOp = manifestOnly
+materializeOp = manifestOnly
+selectOp = manifestOnly
+constructOp = manifestOnly
 validateOp = manifestOnly
 requireConformance = manifestOnly
 provenanceToDataset = manifestOnly
