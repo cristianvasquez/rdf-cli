@@ -24,6 +24,10 @@ function shapeTargets (shapes) {
 
 // Split `working` into the quads the shapes claim and the quads that don't.
 // Laws (spec/manifest.hs Split): claimed ∪ remaining = working, claimed ∩ remaining = ∅.
+// Precondition: `working` is graphless (spec 'WorkingSet') — applyClaimer
+// guarantees it by selecting the graphless subset of the wire. Named-graph
+// quads would break both laws: coverage comes back as bare triples that no
+// longer match the originals.
 export async function claim ({ shapes, working, factory = rdf }) {
   const validator = new Validator(shapes, { coverage: true, factory })
   const report = await validator.validate({ dataset: working })

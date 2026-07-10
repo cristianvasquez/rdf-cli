@@ -147,8 +147,18 @@ type Pipe a b = Stream a -> Stream b
 type QuadPipe = Pipe Quad Quad
 type Query = String
 
+-- | Evidence that every graph term inside @a@ is 'DefaultGraph'. Two
+-- introduction forms only: 'dropGraph' (force graphlessness — an explicit
+-- policy change) and 'splitClaimable' (select the already-graphless subset
+-- of a wire). Constructor private by convention. The CLI graph-drop command
+-- forgets the evidence at the process boundary ('fromGraphless'): the
+-- N-Quads wire carries no types.
+newtype Graphless a = Graphless a
+
+fromGraphless :: Graphless a -> a
+
 assignGraph :: Iri -> QuadPipe      -- ^ graphless → the named graph; existing graphs kept.
-dropGraph   :: QuadPipe             -- ^ every graph term → DefaultGraph.
+dropGraph   :: QuadStream -> Graphless QuadStream -- ^ every graph term → DefaultGraph.
 skolemize   :: Iri -> QuadPipe      -- ^ blank nodes → generated IRIs, consistent within one run.
 
 -- SPARQL: materialization is its own step, so one Store feeds many query ops
@@ -158,31 +168,45 @@ materialize :: QuadStream -> IO Store           -- ^ drains the stream into a st
 select      :: Store -> Query -> BindingsStream -- ^ leaves RDF space.
 construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine can't emit graphs).
 
--- Claim/construct cascade (planned; not implemented in src yet).
+-- Claimers  (src/transforms/claimer.js, src/transforms/claim.js)
 --
--- There are two folds here:
+-- A claimer is ONE claim (SHACL shapes) plus a fan-out of named views
+-- (CONSTRUCTs). One document defines one claimer — 'loadClaimer' rejects
+-- more — and each process applies one claimer, so the cascade IS the Unix
+-- pipe and precedence is pipe order. No order metadata exists.
 --
---   * 'runConstructs' applies several CONSTRUCT queries consecutively to a
---     dataset.
---   * 'foldCascade' applies several claim-and-construct projections
---     consecutively to a working set. Each step partitions the current
---     'WorkingSet' into a claimed summand and a remainder; the fold carries
---     the remainder forward and accumulates the claimed summands.
+-- Claimed/rest is marked by graph terms, reusing the graph policy above: the
+-- working set is the GRAPHLESS subset of the incoming stream; quads that
+-- already carry a named graph were claimed upstream and pass through
+-- untouched; claiming moves quads out of graphless space (source graph, view
+-- graphs); the rest stays graphless for the next claimer. Hence a theorem,
+-- not a runtime check: a later claimer can never take an earlier claimer's
+-- quads.
 --
--- The claim boundary is explicit: 'project' seeds the constructs from
--- 'ClaimedSet c', never from the whole working dataset.
+-- Views do not fold: every view reads the SAME claimed set, independently —
+-- order-insensitive, parallelizable, each naming its own output graph. The
+-- claim boundary is explicit: 'projectView' seeds each view from
+-- 'ClaimedSet c', never from the whole working set. ('chainConstructs' below
+-- is the different, sequential operation.)
 --
 -- How to read the phantom @c@: it names one claim rule at the type level, so
 -- quads claimed by that rule cannot be confused with another rule's quads in
--- the signatures below. The set of claim rules is open: built-ins and
--- user-provided cascade files introduce projections at runtime, so loaded
--- projections are packed with 'Some' before folding the cascade.
+-- the signatures below. The set of claim rules is open — claimer documents
+-- introduce them at runtime — so loaded claimers are packed with 'Some'.
 data ClaimId
-data WorkingSet                   -- ^ current unclaimed quads.
-data Claims       (c :: ClaimId)  -- ^ claim rules for one projection (currently SHACL shapes).
+data WorkingSet                   -- ^ the graphless subset of the wire; claimable.
+
+-- | The claimable working set is the graphless subset of the wire:
+-- 'splitClaimable' selects it, named quads carry on as pass-through. 'claim'
+-- relies on graphlessness — coverage comes back as bare (s, p, o) triples,
+-- and comparing those against the working set is only sound when the working
+-- set is graphless too. Making named data claimable is explicit: pipe
+-- @rdf graph-drop@ first.
+splitClaimable :: QuadStream -> (Graphless QuadStream, QuadStream)
+mkWorkingSet   :: Graphless QuadStream -> IO WorkingSet
+data Claims       (c :: ClaimId)  -- ^ claim rules for one claimer (currently SHACL shapes).
 data ClaimedSet   (c :: ClaimId)  -- ^ subset read by 'Claims c'.
 data ProjectedSet                 -- ^ derived quads emitted from a claimed set.
-data NonEmpty a = a :| [a]
 
 -- | A pair witnessing a lossless coproduct decomposition of a working set:
 -- both sides exist together, and under their forgetful view as sets of quads
@@ -197,80 +221,87 @@ claim :: Claims c -> WorkingSet -> IO (Split (ClaimedSet c) WorkingSet)
 --   (viewed as sets of quads)
 --   partition: claimed ∪ remainder = input
 --   disjoint:  claimed ∩ remainder = ∅
+-- Both laws lean on 'WorkingSet' being graphless (see 'mkWorkingSet').
 
-data Construct  = ConstructQuery Query
-type Constructs = NonEmpty Construct -- ^ order is significant.
+data Construct = ConstructQuery Query
 
-runConstruct  :: Construct -> Dataset -> IO Dataset
--- runConstructs (c :| cs) d0 = foldM (\d q -> runConstruct q d) d0 (c : cs)
-runConstructs :: Constructs -> Dataset -> IO Dataset
+-- | One derivation: run the CONSTRUCT over the claimed quads only, so its
+-- WHERE cannot overreach the claim.
+runConstruct :: Construct -> Dataset -> IO Dataset
 
 claimedToDataset :: ClaimedSet c -> Dataset
 asProjected      :: Dataset -> ProjectedSet
--- project cs claimed = asProjected <$> runConstructs cs (claimedToDataset claimed)
-project          :: Constructs -> ClaimedSet c -> IO ProjectedSet
 
-data Projection (c :: ClaimId) = Projection
-  { projectionGraph      :: Iri
-  , projectionClaims     :: Claims c
-  , projectionConstructs :: Maybe Constructs -- ^ Nothing => claim/source only.
+-- | One named aspect of a claimer: a CONSTRUCT and the graph its output
+-- lands in. Naming the output is what lets several views coexist.
+data View = View
+  { viewGraph :: Iri
+  , viewQuery :: Construct
+  }
+
+-- Law (fan-out): every view reads the SAME claimed set. Views are
+-- independent — evaluation order is unobservable, so they may run in
+-- parallel and 'loadClaimer' may sort them freely.
+-- projectView v claimed = asProjected <$> runConstruct (viewQuery v) (claimedToDataset claimed)
+projectView :: View -> ClaimedSet c -> IO ProjectedSet
+
+-- | Sequential CONSTRUCT pipeline — a DIFFERENT operation from a projection's
+-- view derivation: a transformation chain (rewrite IRIs, reshape, migrate).
+-- Order is significant; step n+1 sees only step n's output. Declared so the
+-- algebra names the use case; deliberately unimplemented in the library — the
+-- CLI already covers it by piping @rdf construct@ ('Construct' via ':>').
+-- chainConstructs cs d0 = foldM (flip runConstruct) d0 cs
+chainConstructs :: [Construct] -> Dataset -> IO Dataset
+
+data Claimer (c :: ClaimId) = Claimer
+  { claimerGraph  :: Iri     -- ^ the claimer's name; claimed quads land in 'sourceGraphOf' it.
+  , claimerClaims :: Claims c
+  , claimerViews  :: [View]  -- ^ [] => claim-only.
   }
 
 sourceGraphOf :: Iri -> Iri
 
-data ProjectionStep c = ProjectionStep
-  { stepProjection :: Projection c
-  , stepSource     :: ClaimedSet c
-  , stepView       :: Maybe ProjectedSet
+data ClaimerStep c = ClaimerStep
+  { stepClaimer :: Claimer c
+  , stepSource  :: ClaimedSet c
+  , stepViews   :: [(Iri, ProjectedSet)]
+    -- ^ aligned 1:1 with 'claimerViews'; an empty 'ProjectedSet' means "this
+    -- view matched nothing", still distinguishable per view.
   }
 
--- runProjection p ws = claim (projectionClaims p) ws >>= project the claimed side,
--- returning the step plus the right side for the next cascade step.
-runProjection :: Projection c -> WorkingSet -> IO (ProjectionStep c, WorkingSet)
+-- runClaimer cl ws = claim (claimerClaims cl) ws, then fan the views out over
+-- the claimed side; the remainder is the graphless rest for the wire.
+runClaimer :: Claimer c -> WorkingSet -> IO (ClaimerStep c, WorkingSet)
 
 data Some (f :: ClaimId -> Type) where
   Some :: f c -> Some f
 
-type SomeProjection = Some Projection
-type CascadeStep = Some ProjectionStep
+type SomeClaimer = Some Claimer
 
-data CascadeChannel = SourceChannel | ViewChannel | PassThroughChannel
-type CascadeShape = StreamShape CascadeChannel
+-- The wire around one claimer: upstream claims pass through untouched, then
+-- the claimer's own channels.
+data WireChannel = PassThroughChannel | SourceChannel | ViewChannel | RestChannel
 
--- cascadeShape = SourceChannel ‖ ViewChannel ‖ PassThroughChannel
-cascadeShape :: CascadeShape
+-- claimerShape = PassThroughChannel ‖ SourceChannel ‖ Many ViewChannel ‖ RestChannel
+claimerShape :: StreamShape WireChannel
 
-data CascadeResult = CascadeResult
-  { cascadeSteps       :: [CascadeStep]
-  , cascadePassThrough :: WorkingSet
+data ClaimerResult = ClaimerResult
+  { resultStep        :: Some ClaimerStep
+  , resultRest        :: WorkingSet   -- ^ stays graphless on the wire.
+  , resultPassThrough :: QuadStream   -- ^ upstream claims, untouched.
   }
 
--- Internal to 'loadCascade': order is parse-time metadata. 'loadCascade' sorts
--- by 'projectionOrder' and then drops the number; list position is the cascade
--- precedence.
-data ParsedProjection = ParsedProjection
-  { projectionOrder :: Int
-  , parsedProjection :: SomeProjection
-  }
+-- | One document, one claimer; anything else is an error.
+loadClaimer :: Dataset -> Either Error SomeClaimer
 
--- Law (precedence): 'Cascade' is order-sensitive. If two projections can claim
--- the same quad, the earlier list element wins because later elements only see
--- the folded remainder.
-data Cascade = Cascade [SomeProjection] -- ^ sorted; this list is not commutative.
+-- applyClaimer cl wire = 'splitClaimable' the wire, 'mkWorkingSet' the
+-- graphless side, 'runClaimer' over it, carry the named side as pass-through.
+applyClaimer :: SomeClaimer -> QuadStream -> IO ClaimerResult
 
-mapAccumM   :: (s -> a -> IO (s, b)) -> s -> [a] -> IO (s, [b])
-cascadeStep :: WorkingSet -> SomeProjection -> IO (WorkingSet, CascadeStep)
--- foldCascade ps ws0 = mapAccumM cascadeStep ws0 ps
-foldCascade :: [SomeProjection] -> WorkingSet -> IO (WorkingSet, [CascadeStep])
-runCascade  :: Cascade -> WorkingSet -> IO CascadeResult
--- runCascade (Cascade ps) ws0 = do
---   (passThrough, steps) <- foldCascade ps ws0
---   pure (CascadeResult steps passThrough)
-loadCascade :: Dataset -> Cascade       -- ^ parse named graphs, sort by order.
--- The cascade's logical output shape is @source ‖ view ‖ passThrough@. The
--- implementation serializes those channels into one RDF dataset by assigning
--- source/view graph names and leaving pass-through as the final remainder.
-emitCascade :: CascadeResult -> Dataset
+-- Serializes the channels: pass-through unchanged, claimed → source graph,
+-- each view → its own graph, rest stays graphless. The CLI verb is 'Claim'
+-- in the Cmd algebra below.
+emitClaimer :: ClaimerResult -> QuadStream
 
 -- SHACL validation.
 data BuiltinName = Shacl | Skos
@@ -352,6 +383,7 @@ data Cmd (i :: StreamKind) (o :: StreamKind) where
   FromPaths   :: Cmd 'PathLines  'NQuads
   Select      :: Query -> Cmd 'NQuads 'JSONLinesBindings
   Construct   :: Query -> Cmd 'NQuads 'NQuads
+  Claim       :: FilePath -> Cmd 'NQuads 'NQuads      -- ^ one claimer per process; pipe several to cascade.
   Validate    :: Cmd 'NQuads 'NQuads                  -- ^ exit code 1 on non-conformance.
   GraphAssign :: Iri -> Cmd 'NQuads 'NQuads
   GraphDrop   :: Cmd 'NQuads 'NQuads
@@ -494,6 +526,7 @@ readFromPaths = manifestOnly
 readFromGlob = manifestOnly
 readFromStdin = manifestOnly
 
+fromGraphless = manifestOnly
 assignGraph = manifestOnly
 dropGraph = manifestOnly
 skolemize = manifestOnly
@@ -501,21 +534,20 @@ materialize = manifestOnly
 select = manifestOnly
 construct = manifestOnly
 
+splitClaimable = manifestOnly
+mkWorkingSet = manifestOnly
 claim = manifestOnly
 runConstruct = manifestOnly
-runConstructs = manifestOnly
+chainConstructs = manifestOnly
 claimedToDataset = manifestOnly
 asProjected = manifestOnly
-project = manifestOnly
+projectView = manifestOnly
 sourceGraphOf = manifestOnly
-runProjection = manifestOnly
-cascadeShape = manifestOnly
-mapAccumM = manifestOnly
-cascadeStep = manifestOnly
-foldCascade = manifestOnly
-runCascade = manifestOnly
-loadCascade = manifestOnly
-emitCascade = manifestOnly
+runClaimer = manifestOnly
+claimerShape = manifestOnly
+loadClaimer = manifestOnly
+applyClaimer = manifestOnly
+emitClaimer = manifestOnly
 
 resolveBuiltinShapes = manifestOnly
 validate = manifestOnly

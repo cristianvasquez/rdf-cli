@@ -126,6 +126,28 @@ fi
 assert_contains "$(cat "$TMP/skos-invalid.nq")" "<urn:validation-report>" "validate builtin skos: invalid report still emitted"
 assert_contains "$(cat "$TMP/skos-invalid.err")" "SHACL Validation (SKOS)" "validate builtin skos: markdown report on stderr"
 
+printf '\nclaim\n'
+
+out=$($CLI read "$ROOT/tests/fixtures/person-valid.ttl" \
+  | $CLI claim "$ROOT/tests/fixtures/person-claimer.trig")
+assert_contains "$out" "<urn:claimers:person:source>" "claim: claimed quads land in the source graph"
+assert_contains "$out" "<urn:views:person-card>" "claim: view quads land in the view graph"
+assert_contains "$out" "label" "claim: view derived the label"
+assert_contains "$out" '"30"' "claim: unclaimed age quad passes through"
+
+out=$($CLI read "$ROOT/tests/fixtures/person-valid.ttl" \
+  | $CLI claim "$ROOT/tests/fixtures/person-claimer.trig" \
+  | $CLI claim "$ROOT/tests/fixtures/person-claimer.trig")
+assert_contains "$out" "<urn:claimers:person:source>" "claim twice: first claim survives the second"
+assert_lines "$(printf '%s\n' "$out" | grep 'person:source')" 2 "claim twice: second pass claims nothing new (claims pass through)"
+
+if printf '' | $CLI claim "$ROOT/tests/fixtures/person-valid.ttl" 2>"$TMP/claim.err"; then
+  fail "claim: expected a document without a claimer graph to fail"
+else
+  ok "claim: rejects a document that defines no claimer"
+fi
+assert_contains "$(cat "$TMP/claim.err")" "exactly one claimer" "claim: error names the contract"
+
 printf '\ngraph policy\n'
 
 out=$($CLI read "$DATA/bob-likes-alice.ttl" \

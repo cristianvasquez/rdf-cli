@@ -1,0 +1,22 @@
+# One claimer document: exactly one named graph holding the claim (SHACL
+# shapes) and the views (subjects with a cascade:query value; the subject IRI
+# names the graph the view's output lands in).
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix ex: <http://example.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix cascade: <urn:rdf-cli:cascade#> .
+
+<urn:claimers:person> {
+  ex:PersonShape
+    a sh:NodeShape ;
+    sh:targetClass ex:Person ;
+    sh:property ex:PersonNameShape .
+
+  ex:PersonNameShape
+    sh:path ex:name ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string .
+
+  <urn:views:person-card> cascade:query
+    "PREFIX ex: <http://example.org/> CONSTRUCT { ?p ex:label ?n } WHERE { ?p ex:name ?n }" .
+}

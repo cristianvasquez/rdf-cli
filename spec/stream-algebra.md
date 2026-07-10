@@ -32,6 +32,7 @@ This note explains the design bias behind the CLI. For the actual command contra
   - `rdf from-paths`
 - Dataset transforms:
   - `rdf construct`
+  - `rdf claim`
   - `rdf validate`
   - `rdf graph-assign`
   - `rdf graph-drop`
@@ -41,6 +42,38 @@ This note explains the design bias behind the CLI. For the actual command contra
 - Sinks:
   - `rdf pretty`
   - `rdf table`
+
+## Claimers: the pipe is the cascade
+
+A claimer is one claim (SHACL shapes: "these are the quads I read") plus a
+fan-out of named views (CONSTRUCTs over the claimed quads only). One document
+defines one claimer, and `rdf claim` applies one claimer per process — so a
+cascade of claimers is just a pipe, and precedence is pipe order. There is no
+order metadata anywhere.
+
+What makes this sound is that claimed-vs-rest is marked by the graph term
+itself, reusing the graph policy above:
+
+- the working set is the **graphless** subset of the incoming stream;
+- claiming moves quads **out of** graphless space — claimed quads land in the
+  claimer's `:source` graph (provenance), each view's output lands in the
+  view's own graph;
+- the rest stays graphless, still claimable by the next claimer;
+- quads that already carry a named graph were claimed upstream and pass
+  through untouched.
+
+So "a later claimer cannot take an earlier claimer's quads" is not a runtime
+check — it is impossible by construction, and any intermediate wire can be
+inspected to see exactly what is claimed and by whom. Making named data
+claimable is explicit, like every other graph-policy change: pipe
+`rdf graph-drop` first.
+
+```bash
+rdf read ./data/**/*.ttl \
+  | rdf claim ./claimers/person.trig \
+  | rdf claim ./claimers/organization.trig \
+  | rdf pretty --format trig
+```
 
 ## Examples
 

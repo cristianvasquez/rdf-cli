@@ -1,3 +1,4 @@
+import claim from './claim.js'
 import construct from './construct.js'
 import fromPaths from './from-paths.js'
 import graphAssign from './graph-assign.js'
@@ -16,6 +17,7 @@ export const commands = {
   skolem,
   table,
   construct,
+  claim,
   validate,
   'graph-assign': graphAssign,
   'graph-drop': graphDrop,
