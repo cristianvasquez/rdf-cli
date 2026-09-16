@@ -1,6 +1,6 @@
 {
   "name": "rdf-cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "RDF stream processing toolkit with a CLI and reusable pipeline components",
   "type": "module",
   "exports": {
@@ -48,6 +48,6 @@
     "glob": "^13.0.6",
     "oxigraph": "^0.5.6",
     "rdf-ext": "^2.5.1",
-    "shacl-engine": "^1.1.0"
+    "shacl-engine": "github:cristianvasquez/shacl-engine#fix/not-multi-qualified-node"
   }
 }
