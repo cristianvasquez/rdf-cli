@@ -16,6 +16,7 @@ export default defineCommand({
     query: {
       type: 'positional',
       description: 'SPARQL SELECT query string',
+      required: false,
     },
     'query-file': {
       type: 'string',

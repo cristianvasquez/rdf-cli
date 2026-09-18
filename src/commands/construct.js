@@ -20,6 +20,7 @@ export default defineCommand({
     query: {
       type: 'positional',
       description: 'SPARQL CONSTRUCT query string',
+      required: false,
     },
     'query-file': {
       type: 'string',

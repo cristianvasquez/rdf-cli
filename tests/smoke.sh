@@ -80,6 +80,11 @@ out=$($CLI read "$DATA/bob-likes-alice.ttl" \
   | $CLI table --format jsonl)
 assert_contains "$out" '"name":"Bob"' "table jsonl: Bob present"
 
+printf 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name }' > "$TMP/select.rq"
+out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI select --query-file "$TMP/select.rq" 2>"$TMP/err")
+assert_contains "$out" '"name":"Bob"' "select: --query-file without positional query"
+assert_empty "$(cat "$TMP/err")" "select: --query-file has no stderr"
+
 printf '\nconstruct\n'
 
 out=$($CLI read "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" \
@@ -91,6 +96,14 @@ out=$($CLI read "$DATA/alice-knows-bob.rdf" "$DATA/bob-likes-alice.ttl" \
   | $CLI construct 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> CONSTRUCT { ?s foaf:name ?name } WHERE { ?s foaf:name ?name }' \
   | $CLI pretty)
 assert_contains "$out" "Alice" "construct | pretty: renders graphless construct output"
+
+printf 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> CONSTRUCT { ?s foaf:name ?name } WHERE { ?s foaf:name ?name }' > "$TMP/construct.rq"
+out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI construct --query-file "$TMP/construct.rq" 2>"$TMP/err")
+assert_contains "$out" "Bob" "construct: --query-file without positional query"
+assert_empty "$(cat "$TMP/err")" "construct: --query-file has no stderr"
+
+out=$($CLI --version)
+assert_contains "$out" "$(node -p "require('$ROOT/package.json').version")" "cli: --version matches package.json"
 
 printf '\nvalidate\n'
 
