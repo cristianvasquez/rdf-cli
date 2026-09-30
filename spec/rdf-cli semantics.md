@@ -18,6 +18,8 @@ This document defines the current command contract for `rdf`.
 - `select` exits RDF space and emits bindings as JSON Lines.
 - `table` and `pretty` are sinks.
 - Errors go to stderr. When possible, valid inputs still produce output even if another input fails.
+- A failure is never silent: a command that reports an error exits 1.
+- Each input file is its own blank-node scope. The N-Quads wire keeps labels unchanged between stages.
 
 ## Command Contract
 
@@ -28,8 +30,8 @@ The command-by-command input/output contract is the `Cmd` algebra in
 ## Graph policy
 
 - Preserve graph presence or absence by default.
-- Use `graph-assign` to add named graphs explicitly.
-- Use `graph-drop` to remove graph terms explicitly.
+- Use `map --where '!bound(?g)' -g '<iri>'` to add named graphs explicitly.
+- Use `map -g default` to remove graph terms explicitly.
 - Sink formats can also force graph loss when the target format cannot encode named graphs.
 
 ## Sink formats
@@ -38,4 +40,5 @@ The command-by-command input/output contract is the `Cmd` algebra in
 - `pretty --format turtle`: human-oriented, drops graph assignments
 - `pretty --format nquads`: machine-oriented, preserves named graphs
 - `pretty --format ntriples`: machine-oriented, drops graph assignments
-- `table --format csv|tsv|jsonl`: bindings sink formats
+- `table --format csv|tsv`: bindings sink formats (`select` already emits JSON Lines)
+- Any other format is an error; there is no fallback.

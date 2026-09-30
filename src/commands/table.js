@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty'
 import { writeTable } from '../sinks/table.js'
+import { fail } from './shared.js'
 
 export default defineCommand({
   io: { stdin: 'JSONLinesBindings', stdout: 'Text' },
@@ -11,11 +12,13 @@ export default defineCommand({
     format: {
       type: 'string',
       alias: 'f',
-      description: 'Output format: csv (default), tsv, jsonl',
+      description: 'Output format: csv (default) or tsv',
       default: 'csv',
     },
   },
   async run ({ args }) {
-    await writeTable(process.stdin, { format: (args.format || 'csv').toLowerCase() })
+    const format = (args.format || 'csv').toLowerCase()
+    if (format !== 'csv' && format !== 'tsv') fail(`unsupported table format: ${args.format}`)
+    await writeTable(process.stdin, { format })
   },
 })

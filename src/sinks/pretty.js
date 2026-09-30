@@ -32,7 +32,11 @@ export async function datasetToString (dataset, { format, prefixes }) {
     : toTurtleString(dataset, prefixes)
 }
 
+const PRETTY_FORMATS = [TRIG, TURTLE, NQUADS, NTRIPLES]
+
+// Any format outside PRETTY_FORMATS is an error; there is no fallback to TriG.
 export async function writePretty (source, { format = TRIG, prefixes = {} } = {}) {
+  if (!PRETTY_FORMATS.includes(format)) throw new Error(`unsupported output format: ${format}`)
   const dataset = await collectDataset(source)
   try {
     if (format === NQUADS || format === NTRIPLES) {

@@ -15,7 +15,7 @@ export default defineCommand({
       'graph were claimed upstream and pass through untouched. Claimed quads land in ' +
       'the claimer\'s :source graph, each view lands in its own graph, and the rest ' +
       'stays graphless. Cascade claimers by piping several claim commands; precedence ' +
-      'is pipe order. Use graph-drop to make named data claimable.',
+      'is pipe order. Use map -g default to make named data claimable.',
   },
   args: {
     claimer: {

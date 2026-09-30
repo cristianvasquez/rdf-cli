@@ -30,15 +30,20 @@ This note explains the design bias behind the CLI. For the actual command contra
 - Sources:
   - `rdf read`
   - `rdf from-paths`
-- Dataset transforms:
+- Dataset transforms, per quad (streaming):
+  - `rdf filter`
+  - `rdf map`
+  - `rdf skolem`
+- Dataset transforms, whole dataset:
   - `rdf construct`
   - `rdf claim`
   - `rdf validate`
-  - `rdf graph-assign`
-  - `rdf graph-drop`
-  - `rdf skolem`
+  - `rdf canonicalize`
+  - `rdf dispatch` (also writes named graphs to files)
 - Dataset to bindings:
   - `rdf select`
+- Dataset to text:
+  - `rdf ask`
 - Sinks:
   - `rdf pretty`
   - `rdf table`
@@ -73,7 +78,7 @@ So "a later claimer cannot take an earlier claimer's quads" is not a runtime
 check — it is impossible by construction, and any intermediate wire can be
 inspected to see exactly what is claimed and by whom. Making named data
 claimable is explicit, like every other graph-policy change: pipe
-`rdf graph-drop` first.
+`rdf map -g default` first.
 
 ```bash
 rdf read ./data/**/*.ttl \
@@ -144,6 +149,6 @@ Make graph dropping explicit:
 
 ```bash
 rdf read --graph-from path ./data/**/*.ttl \
-  | rdf graph-drop \
+  | rdf map -g default \
   | rdf pretty --format turtle
 ```

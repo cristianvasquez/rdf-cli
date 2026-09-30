@@ -18,7 +18,7 @@ test('public api exposes namespace exports', () => {
 test('public api does not expose top-level pipeline components', async () => {
   const api = await import('rdf-cli')
   assert.equal('readFromGlob' in api, false)
-  assert.equal('assignGraph' in api, false)
+  assert.equal('mapQuads' in api, false)
   assert.equal('NQUADS' in api, false)
 })
 
@@ -29,7 +29,7 @@ test('public api exposes a dedicated triplify entry point', async () => {
 
 test('public api supports composed pipeline usage', async () => {
   const source = sources.readFromGlob(['tests/fixtures/person-valid.ttl'])
-  const transformed = Readable.from(source, { objectMode: true }).pipe(transforms.assignGraph('urn:graph'))
+  const transformed = Readable.from(source, { objectMode: true }).pipe(transforms.mapQuads('true', { graph: '<urn:graph>' }))
   const dataset = await rdf.dataset().import(transformed)
   const output = await sinks.datasetToString(dataset, { format: sinks.TRIG, prefixes: {} })
 

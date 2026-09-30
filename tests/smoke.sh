@@ -75,10 +75,11 @@ out=$($CLI read --graph-from path "$DATA/bob-likes-alice.ttl" \
 assert_contains "$out" "file://$DATA/bob-likes-alice.ttl" "table tsv: graph binding present"
 assert_contains "$out" "Bob" "table tsv: Bob present"
 
-out=$($CLI read "$DATA/bob-likes-alice.ttl" \
-  | $CLI select 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name }' \
-  | $CLI table --format jsonl)
-assert_contains "$out" '"name":"Bob"' "table jsonl: Bob present"
+if $CLI read "$DATA/bob-likes-alice.ttl" | $CLI select 'SELECT * WHERE { ?s ?p ?o }' | $CLI table --format jsonl >/dev/null 2>"$TMP/err"; then
+  fail "table: jsonl must be rejected"
+else
+  ok "table: jsonl rejected (select already emits JSON Lines)"
+fi
 
 printf 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name }' > "$TMP/select.rq"
 out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI select --query-file "$TMP/select.rq" 2>"$TMP/err")
@@ -165,17 +166,76 @@ assert_contains "$(cat "$TMP/claim.err")" "exactly one claimer" "claim: error na
 
 printf '\ngraph policy\n'
 
-out=$($CLI read "$DATA/bob-likes-alice.ttl" \
-  | $CLI graph-assign urn:batch \
-  | $CLI pretty --format trig)
-assert_contains "$out" "<urn:batch>" "graph-assign: named graph added"
-assert_contains "$out" "Bob" "graph-assign: data preserved"
+out=$($CLI read "$DATA/bob-likes-alice.ttl" "$DATA/two-graphs.trig" \
+  | $CLI map --where '!bound(?g)' -g '<urn:batch>' \
+  | $CLI pretty --format nquads)
+assert_contains "$out" "<urn:batch>" "map -g: graphless quads get the graph"
+assert_contains "$out" "<urn:g1>" "map --where: existing graphs kept"
 
 out=$($CLI read --graph-from path "$DATA/bob-likes-alice.ttl" \
-  | $CLI graph-drop \
+  | $CLI map -g default \
   | $CLI pretty)
-assert_contains "$out" "Bob" "graph-drop | pretty: renders after dropping graphs"
-assert_not_contains "$out" "file://" "graph-drop: file graph removed"
+assert_contains "$out" "Bob" "map -g default | pretty: renders after dropping graphs"
+assert_not_contains "$out" "file://" "map -g default: file graph removed"
+
+printf '\nfilter / map\n'
+
+out=$($CLI read "$DATA/two-graphs.trig" | $CLI filter '?g = <urn:g1>')
+assert_lines "$out" 1 "filter: keeps one graph"
+assert_contains "$out" "<urn:g1>" "filter: the kept graph"
+
+out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI filter 'isLiteral(?o) && ?o + 1' 2>"$TMP/err")
+assert_empty "$out" "filter: expression error counts as false"
+assert_empty "$(cat "$TMP/err")" "filter: expression error is not reported"
+
+if $CLI read "$DATA/bob-likes-alice.ttl" | $CLI filter '?s =' >/dev/null 2>"$TMP/err"; then
+  fail "filter: invalid expression must fail"
+else
+  assert_contains "$(cat "$TMP/err")" "invalid expression" "filter: invalid expression exits 1"
+fi
+
+out=$($CLI read "$DATA/bob-likes-alice.ttl" \
+  | $CLI map --where 'strstarts(str(?s), "http://example.org/")' -s 'iri(replace(str(?s), "^http://example.org/", "https://new.org/"))')
+assert_contains "$out" "<https://new.org/Bob>" "map -s: matching subjects rewritten"
+assert_not_contains "$out" "<http://example.org/Bob>" "map -s: no old subject left"
+
+if out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI map -s 'str(?s)' 2>"$TMP/err"); then
+  fail "map: invalid rewrite must exit 1"
+else
+  ok "map: invalid rewrite exits 1"
+fi
+assert_contains "$(cat "$TMP/err")" "not valid as subject" "map: error names the position"
+assert_lines "$out" 3 "map: failed quads pass unchanged"
+
+printf '\nask / canonicalize / dispatch\n'
+
+out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI ask 'ASK { ?s ?p ?o }')
+assert_contains "$out" "true" "ask: true"
+if $CLI read "$DATA/bob-likes-alice.ttl" | $CLI ask 'ASK { ?s <urn:none> ?o }' >"$TMP/out"; then
+  fail "ask: false must exit 1"
+else
+  assert_contains "$(cat "$TMP/out")" "false" "ask: false exits 1"
+fi
+
+a=$(printf '_:x <http://ex/p> _:y .\n_:y <http://ex/p> "v" .\n' | $CLI read | $CLI canonicalize)
+b=$(printf '_:q <http://ex/p> "v" .\n_:z <http://ex/p> _:q .\n' | $CLI read | $CLI canonicalize)
+[[ "$a" == "$b" ]] && ok "canonicalize: isomorphic inputs give equal output" || fail "canonicalize: outputs differ"
+assert_contains "$a" "_:c14n0" "canonicalize: canonical labels"
+
+mkdir -p "$TMP/in"
+cp "$DATA/bob-likes-alice.ttl" "$DATA/alice-knows-carol.ttl" "$TMP/in/"
+out=$(cd "$TMP" && $CLI read --graph-from path 'in/*.ttl' | $CLI dispatch file://./in/ -d dispatched 2>"$TMP/err")
+assert_empty "$out" "dispatch: written quads leave the stream"
+[[ -f "$TMP/dispatched/bob-likes-alice.ttl" && -f "$TMP/dispatched/alice-knows-carol.ttl" ]] && ok "dispatch: one file per graph" || fail "dispatch: files missing"
+out=$($CLI read "$TMP/dispatched/bob-likes-alice.ttl" | $CLI canonicalize)
+exp=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI canonicalize)
+[[ "$out" == "$exp" ]] && ok "dispatch: read --graph-from path round trip" || fail "dispatch: round trip differs"
+if (cd "$TMP" && $CLI read --graph-from path 'in/*.ttl' | $CLI dispatch file://./in/ -d dispatched >"$TMP/out.nq" 2>"$TMP/err"); then
+  fail "dispatch: existing file must exit 1"
+else
+  assert_contains "$(cat "$TMP/err")" "--overwrite" "dispatch: existing file exits 1"
+fi
+assert_contains "$(cat "$TMP/out.nq")" "Bob" "dispatch: unwritten graph stays in the stream"
 
 out=$(printf '_:a <http://example.org/p> _:b .\n_:a <http://example.org/q> <http://example.org/o> .\n' \
   | $CLI skolem --base-iri https://example.org/.well-known/genid \
@@ -203,7 +263,7 @@ out=$($CLI read "$DATA/*.ttl" | $CLI pretty)
 assert_contains "$out" "Bob" "read glob | pretty: glob expansion works end-to-end"
 
 out=$($CLI read "$DATA/bob-likes-alice.ttl" \
-  | $CLI graph-assign urn:batch \
+  | $CLI map -g '<urn:batch>' \
   | $CLI pretty --format trig)
 assert_contains "$out" "<urn:batch>" "pretty trig: named graph shown"
 assert_contains "$out" "Bob" "pretty trig: data preserved"
@@ -213,15 +273,21 @@ assert_lines "$out" 3 "pretty nquads: 3 graphless statements"
 assert_not_contains "$out" "file://" "pretty nquads: graphless remains graphless"
 
 out=$($CLI read "$DATA/bob-likes-alice.ttl" \
-  | $CLI graph-assign urn:batch \
+  | $CLI map -g '<urn:batch>' \
   | $CLI pretty --format nquads)
 assert_contains "$out" "<urn:batch>" "pretty nquads: named graph preserved"
 
 out=$($CLI read "$DATA/bob-likes-alice.ttl" \
-  | $CLI graph-assign urn:batch \
+  | $CLI map -g '<urn:batch>' \
   | $CLI pretty --format ntriples)
 assert_not_contains "$out" "urn:batch" "pretty ntriples: graph dropped by format"
 assert_lines "$out" 3 "pretty ntriples: 3 triples"
+
+if $CLI read "$DATA/bob-likes-alice.ttl" | $CLI pretty --format jsonld >/dev/null 2>"$TMP/err"; then
+  fail "pretty: unsupported format must exit 1"
+else
+  assert_contains "$(cat "$TMP/err")" "unsupported output format" "pretty: unsupported format exits 1"
+fi
 
 printf '\nprefixes autodiscovery\n'
 

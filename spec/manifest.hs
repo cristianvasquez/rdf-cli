@@ -127,6 +127,8 @@ data GraphFrom = Path       -- ^ the only accepted @--graph-from@ value.
 
 data ReadOpts = ReadOpts
   { graphFrom :: Maybe GraphFrom                 -- ^ Just Path ⇒ default graph := file:// IRI.
+  , format    :: Maybe MimeType                  -- ^ @--format@: forces the format of every input;
+                                                 --   Nothing ⇒ 'guessMimeType' per file.
   , onError   :: Maybe (FilePath -> Error -> IO ())
   }
 
@@ -136,12 +138,17 @@ type Pattern = String
 streamFileQuads :: FilePath -> Maybe MimeType -> Either Error QuadStream
 
 -- | Parse each path independently; per-file failures go to 'onError', the rest continue.
+--
+-- Law (blank-node scope): each file is its own blank-node scope, for every
+-- format. Equal labels in two files denote two different nodes on the wire.
 readFromPaths :: PathStream -> ReadOpts -> QuadStream
 -- | Expand globs, then 'readFromPaths'.
 readFromGlob  :: [Pattern] -> ReadOpts -> QuadStream
 
 -- | Read RDF bytes from stdin. With a hint, stream directly; without, buffer and
 -- 'detectFormat'. Calls @process.exit 1@ when the format cannot be detected.
+-- Stdin is one blank-node scope: labels pass unchanged, so the N-Quads wire
+-- keeps them stable from stage to stage.
 readFromStdin :: Maybe MimeType -> IO QuadStream
 
 --------------------------------------------------------------------------------
@@ -155,18 +162,82 @@ type Query = String
 -- | Evidence that every graph term inside @a@ is 'DefaultGraph'. Two
 -- introduction forms only: 'dropGraph' (force graphlessness — an explicit
 -- policy change) and 'splitClaimable' (select the already-graphless subset
--- of a wire). Constructor private by convention. The CLI graph-drop command
--- forgets the evidence at the process boundary ('fromGraphless'): the
--- N-Quads wire carries no types.
+-- of a wire). Constructor private by convention. On the CLI, @map -g default@
+-- is 'dropGraph' and forgets the evidence at the process boundary
+-- ('fromGraphless'): the N-Quads wire carries no types.
 newtype Graphless a = Graphless a
 
 -- Law (split idempotent): dropGraph ∘ fromGraphless = id on 'Graphless', and
 -- dropGraph is idempotent on the wire — dropping twice is dropping once.
 fromGraphless :: Graphless a -> a
 
-assignGraph :: Iri -> QuadPipe      -- ^ graphless → the named graph; existing graphs kept.
 dropGraph   :: QuadStream -> Graphless QuadStream -- ^ every graph term → DefaultGraph.
 skolemize   :: Iri -> QuadPipe      -- ^ blank nodes → generated IRIs, consistent within one run.
+
+-- Per-quad transforms. An 'Expr' sees ONE quad: ?s ?p ?o ?g are bound to its
+-- terms, ?g is unbound for the default graph. No joins — anything that needs
+-- more than one quad is 'construct'. They stream; nothing is materialized.
+type Expr = String   -- ^ a SPARQL 1.1 expression over ?s ?p ?o ?g.
+
+-- | Keep the quads where the expression is true. An expression error counts
+-- as false (SPARQL FILTER semantics).
+--
+-- Law (fusion): filterQuads p ∘ filterQuads q = filterQuads (q && p).
+filterQuads :: Expr -> QuadPipe
+
+-- | What 'mapQuads' writes into a matching quad. Nothing = keep the term.
+data Rewrite = Rewrite
+  { rewriteS :: Maybe Expr
+  , rewriteP :: Maybe Expr
+  , rewriteO :: Maybe Expr
+  , rewriteG :: Maybe GraphRewrite
+  }
+data GraphRewrite
+  = ToGraph Expr    -- ^ @-g '<expr>'@
+  | ToDefault       -- ^ @-g default@: the graph term becomes DefaultGraph.
+
+data MapError = MapError Quad Error
+  -- ^ a rewrite expression failed, or gave a term invalid for its position
+  -- (e.g. a literal as subject).
+
+-- | Rewrite one quad. The match expression (@--where@, default @true@) errs
+-- as false, like 'filterQuads'; a non-matching quad is 'Right' unchanged.
+mapQuad :: Expr -> Rewrite -> Quad -> Either MapError Quad
+
+-- | 'mapQuad' over the stream. On 'Left' the INPUT quad passes unchanged and
+-- the error goes to 'onMapError'; the CLI writes it to stderr and exits 1.
+-- A failure is never silent: the caller (a human or an agent) must see it.
+-- In the library, no 'onMapError' means the first error fails the stream.
+--
+-- Covers the removed graph verbs:
+--   graph-assign iri = mapQuads "!bound(?g)" (Rewrite Nothing Nothing Nothing (Just (ToGraph "<iri>")))
+--   graph-drop       = mapQuads "true"       (Rewrite Nothing Nothing Nothing (Just ToDefault))
+mapQuads :: Expr -> Rewrite -> (MapError -> IO ()) {- onMapError -} -> QuadPipe
+
+-- | RDFC-1.0 canonical form: canonical blank-node labels, sorted N-Quads.
+-- Materializes the whole stream.
+--
+-- Laws: canonicalize ∘ canonicalize = canonicalize; isomorphic inputs give
+-- equal outputs.
+canonicalize :: QuadStream -> IO QuadStream
+
+-- | Write each named graph whose IRI starts with the root to a file: the path
+-- is the IRI relative to the root, under the destination directory; the
+-- format comes from the file extension. Graph terms are dropped in the file.
+-- Written quads leave the stream; all other quads pass on.
+--
+-- Errors (per graph, reported, the rest continue, exit 1): unknown extension;
+-- file exists and 'overwrite' is False; path empty or with a '..' segment.
+-- A graph that is not written stays in the stream: no quad is lost.
+--
+-- Law (round trip, up to blank-node relabeling): for files under the
+-- destination, @dispatch root@ writes back what @read --graph-from path@ read,
+-- when root is the file:// IRI of the destination.
+data DispatchOpts = DispatchOpts
+  { destination :: FilePath   -- ^ default ".".
+  , overwrite   :: Bool       -- ^ default False.
+  }
+dispatch :: Iri -> DispatchOpts -> QuadStream -> IO QuadStream
 
 -- SPARQL: materialization is its own step, so one Store feeds many query ops
 -- instead of each op re-draining the source. Store-level ops are pure over the
@@ -174,6 +245,7 @@ skolemize   :: Iri -> QuadPipe      -- ^ blank nodes → generated IRIs, consist
 materialize :: QuadStream -> IO Store           -- ^ drains the stream into a store.
 select      :: Store -> Query -> BindingsStream -- ^ leaves RDF space.
 construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine can't emit graphs).
+ask         :: Store -> Query -> Bool
 
 -- Claimers  (src/transforms/claimer.js, src/transforms/claim.js)
 --
@@ -221,7 +293,7 @@ data WorkingSet                   -- ^ the graphless subset of the wire; claimab
 -- relies on graphlessness — coverage comes back as bare (s, p, o) triples,
 -- and comparing those against the working set is only sound when the working
 -- set is graphless too. Making named data claimable is explicit: pipe
--- @rdf graph-drop@ first.
+-- @rdf map -g default@ first.
 splitClaimable :: QuadStream -> (Graphless QuadStream, QuadStream)
 mkWorkingSet   :: Graphless QuadStream -> IO WorkingSet
 data Claims       (c :: ClaimId)  -- ^ claim rules for one claimer (currently SHACL shapes).
@@ -401,7 +473,7 @@ formatMarkdownReport :: Summary -> String {- label -} -> Text
 -- Sinks  (src/sinks) — terminal effects: bytes/text to stdout
 --------------------------------------------------------------------------------
 
-data TableFormat = CSV | TSV | JSONL
+data TableFormat = CSV | TSV   -- ^ no JSONL: 'select' already emits it.
 
 toReadable      :: Stream a -> Stream a          -- ^ idempotent coercion to a Readable.
 writeQuads      :: QuadStream -> MimeType -> IO ()          -- ^ default MimeType = nquads.
@@ -410,7 +482,8 @@ loadPrefixes    :: Maybe FilePath -> IO Prefixes           -- ^ discovers .prefi
 triplify        :: Dataset -> Prefixes -> IO Text -- ^ pretty TriG, falling back to Turtle when graphless.
 datasetToString :: Dataset -> MimeType -> Prefixes -> IO Text
 -- | Default format = trig. nquads/ntriples delegate to 'writeQuads' (ntriples drops graphs).
-writePretty     :: QuadStream -> MimeType -> Prefixes -> IO ()
+-- Any other format is an error; there is no fallback to trig.
+writePretty     :: QuadStream -> MimeType -> Prefixes -> Either Error (IO ())
 
 bindingToJSONL  :: Row -> Text
 writeBindings   :: BindingsStream -> IO ()
@@ -435,18 +508,27 @@ readLines      :: Stream Byte -> Stream Line     -- ^ trimmed, non-empty lines.
 -- point of the "N-Quads between transforms" rule.
 --------------------------------------------------------------------------------
 
+-- Slim rule: a verb exists only when no other verb expresses it. Removed:
+--   graph-assign <iri>  = map --where '!bound(?g)' -g '<iri>'
+--   graph-drop          = map -g default
+--   table --format jsonl = identity on select's output
+-- Not covered by a per-quad expression, so kept: skolem (one IRI per blank
+-- node across the run), from-paths (a different input kind).
 data Cmd (i :: StreamKind) (o :: StreamKind) where
-  Read        :: Cmd 'RDF        'NQuads              -- ^ or file args → NQuads (bytes-in variant).
-  FromPaths   :: Cmd 'PathLines  'NQuads
-  Select      :: Query -> Cmd 'NQuads 'JSONLinesBindings
-  Construct   :: Query -> Cmd 'NQuads 'NQuads
-  Claim       :: FilePath -> Cmd 'NQuads 'NQuads      -- ^ one claimer per process; pipe several to cascade.
-  Validate    :: Cmd 'NQuads 'NQuads                  -- ^ exit code 1 on non-conformance.
-  GraphAssign :: Iri -> Cmd 'NQuads 'NQuads
-  GraphDrop   :: Cmd 'NQuads 'NQuads
-  Skolem      :: Cmd 'NQuads 'NQuads
-  Pretty      :: Cmd 'NQuads 'RDF                     -- ^ emits re-readable serialized RDF.
-  Table       :: Cmd 'JSONLinesBindings 'Text
+  Read         :: Cmd 'RDF        'NQuads             -- ^ or file args → NQuads (bytes-in variant). @--format@ forces the format.
+  FromPaths    :: Cmd 'PathLines  'NQuads             -- ^ @--format@ as 'Read'.
+  Filter       :: Expr -> Cmd 'NQuads 'NQuads         -- ^ 'filterQuads'.
+  Map          :: Expr -> Rewrite -> Cmd 'NQuads 'NQuads  -- ^ 'mapQuads'; exit 1 on any 'MapError'.
+  Select       :: Query -> Cmd 'NQuads 'JSONLinesBindings
+  Construct    :: Query -> Cmd 'NQuads 'NQuads
+  Ask          :: Query -> Cmd 'NQuads 'Text          -- ^ prints true|false; exit 1 on false.
+  Claim        :: FilePath -> Cmd 'NQuads 'NQuads     -- ^ one claimer per process; pipe several to cascade.
+  Validate     :: Cmd 'NQuads 'NQuads                 -- ^ exit code 1 on non-conformance.
+  Skolem       :: Cmd 'NQuads 'NQuads
+  Canonicalize :: Cmd 'NQuads 'NQuads                 -- ^ 'canonicalize'.
+  Dispatch     :: Iri -> Cmd 'NQuads 'NQuads          -- ^ 'dispatch'; file writes are a side effect.
+  Pretty       :: Cmd 'NQuads 'RDF                    -- ^ emits re-readable serialized RDF; unknown format ⇒ exit 1.
+  Table        :: Cmd 'JSONLinesBindings 'Text
 
 -- Law (Pretty/Read): a section–retraction pair UP TO blank-node relabeling —
 -- read ∘ pretty yields an isomorphic dataset, not an equal one (parsers mint
@@ -531,8 +613,8 @@ data OpKind
   | SelectOp
   | ConstructOp
   | ValidateOp
-  | GraphAssignOp
-  | GraphDropOp
+  | FilterOp
+  | MapOp
   | SkolemOp
   | RequireConformanceOp
 
@@ -615,12 +697,17 @@ readFromGlob = manifestOnly
 readFromStdin = manifestOnly
 
 fromGraphless = manifestOnly
-assignGraph = manifestOnly
 dropGraph = manifestOnly
 skolemize = manifestOnly
+filterQuads = manifestOnly
+mapQuad = manifestOnly
+mapQuads = manifestOnly
+canonicalize = manifestOnly
+dispatch = manifestOnly
 materialize = manifestOnly
 select = manifestOnly
 construct = manifestOnly
+ask = manifestOnly
 
 splitClaimable = manifestOnly
 mkWorkingSet = manifestOnly

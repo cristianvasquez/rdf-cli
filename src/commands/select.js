@@ -1,8 +1,8 @@
 import { defineCommand } from 'citty'
-import { readFile } from 'node:fs/promises'
 import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { writeBindings } from '../sinks/bindings.js'
+import { queryArgs, readQuery } from './shared.js'
 import { materialize, select } from '../transforms/sparql.js'
 
 export default defineCommand({
@@ -12,25 +12,9 @@ export default defineCommand({
     description:
       'Read an N-Quads dataset stream from stdin, run SPARQL SELECT, and emit JSON Lines bindings.',
   },
-  args: {
-    query: {
-      type: 'positional',
-      description: 'SPARQL SELECT query string',
-      required: false,
-    },
-    'query-file': {
-      type: 'string',
-      description: 'Read SPARQL query from file instead',
-    },
-  },
+  args: queryArgs('SELECT'),
   async run ({ args }) {
-    const query = args['query-file']
-      ? await readFile(args['query-file'], 'utf8')
-      : args.query
-    if (!query) {
-      process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
-      process.exit(1)
-    }
+    const query = await readQuery(args)
     const store = await materialize(await readFromStdin(NQUADS))
     await writeBindings(select(store, query))
   },

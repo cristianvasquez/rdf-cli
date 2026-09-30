@@ -2,6 +2,7 @@ import { defineCommand } from 'citty'
 import { readFromGlob } from '../sources/paths.js'
 import { writeQuads } from '../sinks/quads.js'
 import { readFromStdin } from '../sources/stdin.js'
+import { formatArg, graphFromArg, inputFormat } from './shared.js'
 
 export default defineCommand({
   io: { stdin: 'RDF', stdout: 'NQuads' },
@@ -10,17 +11,17 @@ export default defineCommand({
     description:
       'Read RDF from file paths or stdin and emit an N-Quads dataset stream. ' +
       'With path arguments, each path or glob is expanded and parsed. ' +
-      'With no arguments, serialized RDF is read from stdin and auto-detected.',
+      'With no arguments, serialized RDF is read from stdin and auto-detected. ' +
+      'Each file is its own blank-node scope.',
   },
   args: {
-    'graph-from': {
-      type: 'string',
-      description: 'Assign graph identity to graphless input: path',
-    },
+    'graph-from': graphFromArg,
+    format: formatArg,
   },
   async run ({ args }) {
     const patterns = args._ || []
     const graphFrom = args['graph-from']
+    const format = inputFormat(args.format)
     if (graphFrom && graphFrom !== 'path') {
       process.stderr.write('error: --graph-from only supports "path"\n')
       process.exit(1)
@@ -31,7 +32,7 @@ export default defineCommand({
         process.stderr.write('error: --graph-from path is only supported for file inputs\n')
         process.exit(1)
       }
-      await writeQuads(await readFromStdin())
+      await writeQuads(await readFromStdin(format))
       return
     }
 
@@ -39,6 +40,7 @@ export default defineCommand({
     await writeQuads(
       readFromGlob(patterns, {
         graphFrom,
+        format,
         onError: (file, error) => {
           failed = true
           process.stderr.write(`error: ${file}: ${error}\n`)

@@ -9,7 +9,7 @@
 // (source graph, view graphs) and the rest stays graphless for the next
 // claimer in the pipe. Precedence is therefore pipe order, by construction —
 // no order metadata exists. Making named data claimable is explicit: pipe
-// `rdf graph-drop` first.
+// `rdf map -g default` first.
 //
 // A claim also BORROWS a frontier (claim.js): the quads its target navigation
 // read, e.g. rdf:type. The frontier feeds the views but stays graphless in

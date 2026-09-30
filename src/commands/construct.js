@@ -1,8 +1,8 @@
 import { defineCommand } from 'citty'
-import { readFile } from 'node:fs/promises'
 import { NQUADS } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { writeQuads } from '../sinks/quads.js'
+import { queryArgs, readQuery } from './shared.js'
 import { materialize, construct } from '../transforms/sparql.js'
 
 export default defineCommand({
@@ -14,27 +14,11 @@ export default defineCommand({
       'Output is always graphless (all triples go into the default graph). ' +
       'GRAPH clauses in the CONSTRUCT template are not supported by the SPARQL engine — ' +
       'they cause a cryptic parse error ("expected one of \'.\', \':\'"). ' +
-      'To assign a named graph to the output, pipe through graph-assign.',
+      'To assign a named graph to the output, pipe through map -g.',
   },
-  args: {
-    query: {
-      type: 'positional',
-      description: 'SPARQL CONSTRUCT query string',
-      required: false,
-    },
-    'query-file': {
-      type: 'string',
-      description: 'Read SPARQL query from file instead',
-    },
-  },
+  args: queryArgs('CONSTRUCT'),
   async run ({ args }) {
-    const query = args['query-file']
-      ? await readFile(args['query-file'], 'utf8')
-      : args.query
-    if (!query) {
-      process.stderr.write('error: provide a SPARQL query as argument or via --query-file\n')
-      process.exit(1)
-    }
+    const query = await readQuery(args)
     const store = await materialize(await readFromStdin(NQUADS))
     await writeQuads(construct(store, query))
   },

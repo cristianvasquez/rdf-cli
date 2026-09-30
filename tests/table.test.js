@@ -50,11 +50,8 @@ test('writeTable renders TSV with tab-separated header and rows', async () => {
   assert.equal(lines[1], '1\t2')
 })
 
-test('writeTable passes JSONL rows through unchanged', async () => {
-  const out = makeCapture()
-  const row = { x: 'hello', y: 42 }
-  await writeTable(textStream(`${JSON.stringify(row)}\n`), { format: 'jsonl', out })
-  assert.deepEqual(JSON.parse(out.get().trim()), row)
+test('writeTable rejects jsonl: select already emits JSON Lines', async () => {
+  await assert.rejects(writeTable(textStream('{"x":"1"}\n'), { format: 'jsonl', out: makeCapture() }), /unsupported table format/)
 })
 
 test('writeTable produces no output for empty stream', async () => {

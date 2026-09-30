@@ -2,6 +2,7 @@ import { defineCommand } from 'citty'
 import { NQUADS, NTRIPLES, TRIG, TURTLE, resolveFormat } from '../formats.js'
 import { readFromStdin } from '../sources/stdin.js'
 import { loadPrefixes, writePretty } from '../sinks/pretty.js'
+import { fail } from './shared.js'
 
 export default defineCommand({
   io: { stdin: 'NQuads', stdout: 'RDF' },
@@ -24,10 +25,8 @@ export default defineCommand({
   },
   async run ({ args }) {
     const source = await readFromStdin(NQUADS)
-    const requestedFormat = resolveFormat(args.format)
-    const format = requestedFormat === TURTLE || requestedFormat === NQUADS || requestedFormat === NTRIPLES
-      ? requestedFormat
-      : TRIG
+    const format = resolveFormat(args.format)
+    if (![TRIG, TURTLE, NQUADS, NTRIPLES].includes(format)) fail(`unsupported output format: ${args.format}`)
     const prefixes = await loadPrefixes(args.prefixes)
     await writePretty(source, { format, prefixes })
   },

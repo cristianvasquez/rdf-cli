@@ -4,8 +4,8 @@ import {
   select as sparqlSelect,
   construct as sparqlConstruct,
   validate as shaclValidate,
-  assignGraph as assignGraphTransform,
-  dropGraph as dropGraphTransform,
+  filterQuads,
+  mapQuads,
   skolemize,
 } from '../transforms/index.js'
 import { getMaterializeStats } from '../transforms/sparql.js'
@@ -54,15 +54,17 @@ export const validate = (shapeSources, opts = {}) =>
     return { value: Value.quads(stream), meta: { ...stats, validation: summary } }
   })
 
-// --- Streaming graph/skolem transforms: Op QuadStream QuadStream ---
-export const assignGraph = (iri) =>
-  operation('graph-assign', (env) => ({
-    value: Value.quads(asReadable(env.value, 'graph-assign').pipe(assignGraphTransform(iri))),
+// --- Streaming per-quad transforms: Op QuadStream QuadStream ---
+export const filter = (expr) =>
+  operation('filter', (env) => ({
+    value: Value.quads(asReadable(env.value, 'filter').pipe(filterQuads(expr))),
   }))
 
-export const dropGraph = operation('graph-drop', (env) => ({
-  value: Value.quads(asReadable(env.value, 'graph-drop').pipe(dropGraphTransform())),
-}))
+// Without onMapError, a failed rewrite fails the stream: never silent.
+export const map = (where, rewrite, onMapError) =>
+  operation('map', (env) => ({
+    value: Value.quads(asReadable(env.value, 'map').pipe(mapQuads(where, rewrite, onMapError))),
+  }))
 
 export const skolem = (baseIri) =>
   operation('skolem', (env) => ({

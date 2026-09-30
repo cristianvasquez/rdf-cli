@@ -7,8 +7,8 @@ export {
   select,
   construct,
   validate,
-  assignGraph,
-  dropGraph,
+  filter,
+  map,
   skolem,
   requireConformance,
 } from './operations.js'

@@ -1,13 +1,13 @@
-import formats from '@rdfjs/formats'
 import { createReadStream } from 'node:fs'
 import { glob } from 'glob'
 import rdf from 'rdf-ext'
 import { guessMimeType } from '../formats.js'
+import { parseQuads } from './parse.js'
 
 export function streamFileQuads (filePath, mimeType) {
   const resolved = mimeType || guessMimeType(filePath)
   if (!resolved) throw new Error(`unknown format for ${filePath}`)
-  return formats.parsers.import(resolved, createReadStream(filePath, 'utf8'))
+  return parseQuads(resolved, createReadStream(filePath, 'utf8'))
 }
 
 function pathToFileGraph (path) {
@@ -18,22 +18,30 @@ function pathToFileGraph (path) {
   )
 }
 
-function assignDefaultGraph (graph) {
-  return (quad) =>
-    rdf.quad(
-      quad.subject,
-      quad.predicate,
-      quad.object,
-      quad.graph.termType === 'DefaultGraph' ? graph : quad.graph,
-    )
+// One blank-node scope per file: label L in file i becomes b<i>_L. The digits
+// before the first '_' identify the file, so two files never share a label.
+function scopeBlankNodes (index) {
+  const prefix = `b${index}_`
+  const term = (t) => (t.termType === 'BlankNode' ? rdf.blankNode(prefix + t.value) : t)
+  return (quad) => rdf.quad(term(quad.subject), quad.predicate, term(quad.object), term(quad.graph))
 }
 
-export async function * readFromPaths (files, { graphFrom, onError } = {}) {
+function assignDefaultGraph (graph) {
+  return (quad) =>
+    quad.graph.termType === 'DefaultGraph'
+      ? rdf.quad(quad.subject, quad.predicate, quad.object, graph)
+      : quad
+}
+
+export async function * readFromPaths (files, { graphFrom, format, onError } = {}) {
+  let index = 0
   for await (const file of files) {
-    const map = graphFrom === 'path' ? assignDefaultGraph(pathToFileGraph(file)) : null
+    const scope = scopeBlankNodes(index++)
+    const toGraph = graphFrom === 'path' ? assignDefaultGraph(pathToFileGraph(file)) : null
     try {
-      for await (const quad of streamFileQuads(file)) {
-        yield map ? map(quad) : quad
+      for await (const quad of streamFileQuads(file, format)) {
+        const scoped = scope(quad)
+        yield toGraph ? toGraph(scoped) : scoped
       }
     } catch (error) {
       onError?.(file, error)

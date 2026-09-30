@@ -1,8 +1,11 @@
+import ask from './ask.js'
+import canonicalize from './canonicalize.js'
 import claim from './claim.js'
 import construct from './construct.js'
+import dispatch from './dispatch.js'
+import filter from './filter.js'
 import fromPaths from './from-paths.js'
-import graphAssign from './graph-assign.js'
-import graphDrop from './graph-drop.js'
+import map from './map.js'
 import pretty from './pretty.js'
 import read from './read.js'
 import select from './select.js'
@@ -13,13 +16,16 @@ import validate from './validate.js'
 export const commands = {
   read,
   'from-paths': fromPaths,
+  filter,
+  map,
   select,
-  skolem,
-  table,
   construct,
+  ask,
   claim,
   validate,
-  'graph-assign': graphAssign,
-  'graph-drop': graphDrop,
+  skolem,
+  canonicalize,
+  dispatch,
   pretty,
+  table,
 }

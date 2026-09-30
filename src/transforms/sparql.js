@@ -12,7 +12,7 @@ export function getMaterializeStats (store) {
   }
 }
 
-function termInstance (term) {
+export function termInstance (term) {
   if (term.termType === 'Literal')
     return rdf.literal(term.value, term.language || term.datatype)
   if (term.termType === 'NamedNode') return rdf.namedNode(term.value)
@@ -86,6 +86,13 @@ export function construct (store, query) {
 // SPARQL SELECT over a materialized store. Leaves RDF space, yields bindings rows.
 export function select (store, query) {
   return selectBindings(store, query)
+}
+
+// SPARQL ASK over a materialized store.
+export function ask (store, query) {
+  const result = store.query(query)
+  if (typeof result !== 'boolean') throw new Error('not an ASK query')
+  return result
 }
 
 // Sequential CONSTRUCT pipeline (spec/manifest.hs: 'chainConstructs') — the

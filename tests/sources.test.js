@@ -85,3 +85,26 @@ test('readFromPaths yields quads from stdin-supplied file paths', async () => {
   )
   assert.ok(quads.length > 3)
 })
+
+// --- blank-node scope ---
+
+test('readFromPaths gives each file its own blank-node scope, for every format', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const dir = await mkdtemp(`${tmpdir()}/rdf-cli-`)
+  await writeFile(`${dir}/a.ttl`, '_:a <http://ex/p> "1" .\n')
+  await writeFile(`${dir}/b.jsonld`, '{"@id":"_:a","http://ex/p":"2"}')
+  await writeFile(`${dir}/c.jsonld`, '{"@id":"_:a","http://ex/p":"3"}')
+  const quads = await collect(readFromPaths([`${dir}/a.ttl`, `${dir}/b.jsonld`, `${dir}/c.jsonld`]))
+  const labels = new Set(quads.map((q) => q.subject.value))
+  assert.equal(labels.size, 3)
+})
+
+test('readFromPaths applies a forced format to every file', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const dir = await mkdtemp(`${tmpdir()}/rdf-cli-`)
+  await writeFile(`${dir}/data.txt`, '<http://ex/s> <http://ex/p> <http://ex/o> .\n')
+  const quads = await collect(readFromPaths([`${dir}/data.txt`], { format: 'text/turtle' }))
+  assert.equal(quads.length, 1)
+})
