@@ -11,9 +11,9 @@ export default defineCommand({
   meta: {
     name: 'dispatch',
     description:
-      'Read an N-Quads dataset stream from stdin and write each named graph whose IRI starts with ROOT ' +
-      'to a file: the path is the IRI relative to ROOT, the format comes from the extension, ' +
-      'and graph terms are dropped in the file. Written quads leave the stream; all other quads pass on. ' +
+      'Write each named graph under ROOT to a file; pass the other quads on. ' +
+      'The path is the IRI relative to ROOT, the format comes from the extension, ' +
+      'and graph terms are dropped in the file. ' +
       'A graph that cannot be written stays in the stream, the error goes to stderr, and the exit code is 1.',
   },
   args: {

@@ -10,8 +10,8 @@ export default defineCommand({
   meta: {
     name: 'canonicalize',
     description:
-      'Read an N-Quads dataset stream from stdin and emit its RDFC-1.0 canonical form: ' +
-      'canonical blank-node labels, sorted quads. Isomorphic inputs give equal outputs.',
+      'Emit the RDFC-1.0 canonical form. ' +
+      'Blank-node labels are canonical and quads are sorted, so isomorphic inputs give equal outputs.',
   },
   async run () {
     let output

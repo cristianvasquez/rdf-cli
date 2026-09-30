@@ -10,7 +10,7 @@ export default defineCommand({
   meta: {
     name: 'filter',
     description:
-      'Read an N-Quads dataset stream from stdin and keep the quads where a SPARQL expression is true. ' +
+      'Keep the quads where a SPARQL expression is true. ' +
       'The expression sees one quad: ?s ?p ?o ?g (?g is unbound in the default graph). ' +
       'An expression error counts as false.',
   },

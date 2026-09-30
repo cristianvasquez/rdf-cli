@@ -10,8 +10,7 @@ export default defineCommand({
   meta: {
     name: 'construct',
     description:
-      'Read an N-Quads dataset stream from stdin, run SPARQL CONSTRUCT, and emit N-Quads. ' +
-      'Output is always graphless (all triples go into the default graph). ' +
+      'Run a SPARQL CONSTRUCT and emit its triples, graphless. ' +
       'GRAPH clauses in the CONSTRUCT template are not supported by the SPARQL engine — ' +
       'they cause a cryptic parse error ("expected one of \'.\', \':\'"). ' +
       'To assign a named graph to the output, pipe through map -g.',

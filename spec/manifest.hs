@@ -8,8 +8,8 @@
 -- | Type-level manifest of rdf-cli.
 --
 -- This is a /signature-level/ spec, not compiled code. It mirrors @src/@ so the
--- whole system can be reviewed through Haskell's types. It is the executable-looking
--- companion to @spec/rdf-cli semantics.md@ and @spec/stream-algebra.md@.
+-- whole system can be reviewed through Haskell's types. The readme's command
+-- diagram and table are generated from the 'Cmd' algebra (scripts/docs.js).
 --
 -- Conventions used to map the JavaScript onto types:
 --
@@ -501,7 +501,7 @@ collectDataset :: QuadStream -> IO Dataset
 readLines      :: Stream Byte -> Stream Line     -- ^ trimmed, non-empty lines.
 
 --------------------------------------------------------------------------------
--- The CLI as a typed stream algebra  (spec/stream-algebra.md, made checkable)
+-- The CLI as a typed stream algebra
 --
 -- Each verb is indexed by the stream kind it consumes and the kind it produces.
 -- Composition typechecks only when adjacent wire kinds agree — that is the whole

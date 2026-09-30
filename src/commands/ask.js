@@ -9,8 +9,7 @@ export default defineCommand({
   meta: {
     name: 'ask',
     description:
-      'Read an N-Quads dataset stream from stdin, run SPARQL ASK, and print true or false. ' +
-      'Exit code 1 on false.',
+      'Run a SPARQL ASK and print true or false; exit 1 on false.',
   },
   args: queryArgs('ASK'),
   async run ({ args }) {

@@ -31,9 +31,14 @@ The manifest is layered: RDF core → stream carriers → formats → sources �
 sinks → the `Cmd` stream algebra (the CLI verbs, kind-indexed) → the `Operation`/`Envelope`
 pipeline (the library composition layer with provenance).
 
-Two narrower specs sit under the same guide: [`spec/rdf-cli semantics.md`](spec/rdf-cli%20semantics.md)
-(the command-by-command I/O contract) and [`spec/stream-algebra.md`](spec/stream-algebra.md)
-(the rationale). The manifest is the executable-looking version of both.
+[`spec/claim.md`](spec/claim.md) gives the design rationale for claimers.
+
+## Docs are generated
+
+The command diagram and command table in `readme.md` are generated from the `Cmd`
+algebra and the command metadata (`meta.description`, first sentence = purpose).
+After a change to either, run `node scripts/docs.js`. `pnpm lint` fails when the
+readme is out of date. The smoke test runs every code block under `## Recipes`.
 
 ## Conventions
 

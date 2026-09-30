@@ -9,7 +9,7 @@ export default defineCommand({
   meta: {
     name: 'from-paths',
     description:
-      'Read one file path per line from stdin and emit an N-Quads dataset stream. ' +
+      'Parse the files named on stdin, one path per line, into N-Quads. ' +
       'Each file is its own blank-node scope.',
   },
   args: {

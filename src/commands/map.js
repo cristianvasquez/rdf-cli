@@ -12,7 +12,7 @@ export default defineCommand({
   meta: {
     name: 'map',
     description:
-      'Read an N-Quads dataset stream from stdin and rewrite the quads that match --where. ' +
+      'Rewrite the quads that match --where with SPARQL expressions. ' +
       'Each rewrite is a SPARQL expression over one quad: ?s ?p ?o ?g (?g is unbound in the default graph). ' +
       'Non-matching quads pass unchanged. If a rewrite fails or gives a term invalid for its position, ' +
       'the quad passes unchanged, the error goes to stderr, and the exit code is 1. ' +

@@ -10,7 +10,7 @@ export default defineCommand({
   meta: {
     name: 'select',
     description:
-      'Read an N-Quads dataset stream from stdin, run SPARQL SELECT, and emit JSON Lines bindings.',
+      'Run a SPARQL SELECT and emit the bindings as JSON Lines.',
   },
   args: queryArgs('SELECT'),
   async run ({ args }) {

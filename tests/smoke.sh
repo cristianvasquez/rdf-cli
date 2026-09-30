@@ -298,6 +298,25 @@ out=$(cd "$TMP" && $CLI read "$DATA/bob-likes-alice.ttl" | $CLI pretty)
 assert_contains "$out" "@prefix ex:" "prefix ex: applied"
 assert_contains "$out" "@prefix foaf:" "prefix foaf: applied"
 
+printf '\nreadme recipes\n'
+
+# Each ```sh block under "## Recipes" in readme.md runs in a copy of the repository files it uses.
+RECIPES="$TMP/recipes"
+mkdir -p "$RECIPES/tests"
+cp -r "$ROOT/examples" "$RECIPES/"
+cp -r "$ROOT/tests/fixtures" "$RECIPES/tests/"
+awk '/^## /{on=($0=="## Recipes")} on&&/^```sh$/{n++; f=sprintf("%s/recipe-%02d.sh", dir, n); inb=1; next} inb&&/^```$/{inb=0; next} inb{print > f}' dir="$RECIPES" "$ROOT/readme.md"
+rdf() { node "$ROOT/bin/rdf.js" "$@"; }
+export -f rdf
+export ROOT
+count=0
+for recipe in "$RECIPES"/recipe-*.sh; do
+  count=$((count+1))
+  label="recipe $(basename "$recipe" .sh): $(grep -m1 '^#' "$recipe" | sed 's/^# //')"
+  if (cd "$RECIPES" && bash -euo pipefail "$recipe" >/dev/null 2>"$TMP/err"); then ok "$label"; else fail "$label: $(head -3 "$TMP/err")"; fi
+done
+[[ "$count" -gt 0 ]] && ok "readme recipes: $count blocks found" || fail "readme recipes: no blocks found"
+
 printf '\n'
 if [[ "$fail" -eq 0 ]]; then
   printf 'all %d tests passed\n' "$pass"

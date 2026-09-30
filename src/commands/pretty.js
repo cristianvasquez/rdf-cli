@@ -8,7 +8,7 @@ export default defineCommand({
   io: { stdin: 'NQuads', stdout: 'RDF' },
   meta: {
     name: 'pretty',
-    description: 'Read an N-Quads dataset stream from stdin and render TriG, Turtle, N-Quads, or N-Triples.',
+    description: 'Render as TriG (default), Turtle, N-Quads, or N-Triples; any other format is an error.',
   },
   args: {
     format: {

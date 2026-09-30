@@ -3,29 +3,10 @@
 // The Haskell spec is the source of truth for command input/output stream kinds; the
 // io:{} fields (which feed scripts/manifest.js) must stay in sync with it. This scans the
 // regular `Name :: Cmd 'In 'Out` constructors — it does not parse arbitrary Haskell.
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { commands } from '../src/commands/index.js'
+import { parseCmdAlgebra } from './cmd-algebra.js'
 
-const manifestPath = join(import.meta.dirname, '..', 'spec', 'manifest.hs')
-
-const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
-
-// Parse the Cmd algebra into one entry per constructor: e.g. `Read :: Cmd 'RDF 'NQuads`
-// or `Select :: Query -> Cmd 'NQuads 'JSONLinesBindings`. Pipeline lines (`Cmd i o`,
-// unquoted) and comments are ignored.
-function parseCmdAlgebra (source) {
-  const entries = []
-  for (const raw of source.split('\n')) {
-    const line = raw.trim()
-    if (line.startsWith('--')) continue
-    const m = line.match(/^(\w+)\s*::.*\bCmd\s+'(\w+)\s+'(\w+)/)
-    if (m) entries.push({ name: kebab(m[1]), stdin: m[2], stdout: m[3] })
-  }
-  return entries
-}
-
-const haskellEntries = parseCmdAlgebra(readFileSync(manifestPath, 'utf8'))
+const haskellEntries = parseCmdAlgebra()
 const haskell = Object.fromEntries(haskellEntries.map((e) => [e.name, { stdin: e.stdin, stdout: e.stdout }]))
 const js = Object.fromEntries(Object.entries(commands).map(([name, cmd]) => [name, cmd.io ?? null]))
 

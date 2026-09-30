@@ -28,8 +28,9 @@
     "test": "pnpm lint && node --test tests/*.test.js && bash tests/smoke.sh",
     "test:js": "node --test tests/*.test.js",
     "smoke": "bash tests/smoke.sh",
-    "lint": "node scripts/lint-io.js && ghc -fno-code -outputdir /tmp/rdf-cli-ghc -hidir /tmp/rdf-cli-ghc -odir /tmp/rdf-cli-ghc spec/manifest.hs",
-    "manifest": "node scripts/manifest.js"
+    "lint": "node scripts/lint-io.js && node scripts/docs.js --check && ghc -fno-code -outputdir /tmp/rdf-cli-ghc -hidir /tmp/rdf-cli-ghc -odir /tmp/rdf-cli-ghc spec/manifest.hs",
+    "manifest": "node scripts/manifest.js",
+    "docs": "node scripts/docs.js"
   },
   "repository": {
     "type": "git",

@@ -8,7 +8,7 @@ export default defineCommand({
   io: { stdin: 'NQuads', stdout: 'NQuads' },
   meta: {
     name: 'skolem',
-    description: 'Read an N-Quads dataset stream from stdin and replace blank nodes with generated IRIs.',
+    description: 'Replace blank nodes with generated IRIs, one IRI per blank node in the run.',
   },
   args: {
     'base-iri': {

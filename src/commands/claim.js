@@ -10,7 +10,7 @@ export default defineCommand({
   meta: {
     name: 'claim',
     description:
-      'Apply one claimer document to the N-Quads stream on stdin. ' +
+      'Apply one claimer: claimed quads and views move into named graphs. ' +
       'The working set is the graphless subset of the input; quads already in a named ' +
       'graph were claimed upstream and pass through untouched. Claimed quads land in ' +
       'the claimer\'s :source graph, each view lands in its own graph, and the rest ' +
