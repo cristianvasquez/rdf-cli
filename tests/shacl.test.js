@@ -54,3 +54,30 @@ test('validate summary carries conforms and violations', async () => {
   assert.ok('conforms' in summary)
   assert.ok(Array.isArray(summary.violations))
 })
+
+// Upstream shacl-engine bugs fixed in src/transforms/shaclFixes.js (rdf-ext/shacl-engine PR #90).
+// Each case is shapes and data in one file, expected results from the PR's test manifest.
+
+async function violationsOf (name) {
+  const store = await storeFixture(name)
+  const { summary } = await validate(store, [`${fixturesDir}/${name}`])
+  return summary
+}
+
+test('validate: sh:not with several values checks each of them', async () => {
+  const summary = await violationsOf('shacl-not-multi.ttl')
+  assert.equal(summary.conforms, false)
+  assert.deepEqual(
+    summary.violations.map((v) => [v.focusNode, v.sourceConstraint]),
+    [['http://example.org/InvalidPoint1', 'http://www.w3.org/ns/shacl#NotConstraintComponent']],
+  )
+})
+
+test('validate: sh:qualifiedValueShape in a shape reached via sh:node', async () => {
+  const summary = await violationsOf('shacl-qualified-node.ttl')
+  assert.equal(summary.conforms, false)
+  assert.deepEqual(
+    summary.violations.map((v) => [v.focusNode, v.sourceConstraint]),
+    [['http://example.org/citizen-b', 'http://www.w3.org/ns/shacl#NodeConstraintComponent']],
+  )
+})

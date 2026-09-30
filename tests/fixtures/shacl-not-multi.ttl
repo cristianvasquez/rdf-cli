@@ -1,0 +1,27 @@
+# From rdf-ext/shacl-engine PR #90 (test/assets/misc/not-multi.ttl): shapes and data in one graph.
+@prefix ex: <http://example.org/>.
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+
+
+ex:HasHeight
+  sh:property [
+      sh:minCount 1;
+      sh:path ex:height
+    ].
+
+ex:HasWidth
+  sh:property [
+      sh:minCount 1;
+      sh:path ex:width
+    ].
+
+ex:InvalidPoint1 a ex:Point;
+  ex:height 3.
+
+ex:Point a rdfs:Class, sh:NodeShape;
+  rdfs:subClassOf rdfs:Resource;
+  sh:not ex:HasWidth, ex:HasHeight.
+
+ex:ValidPoint1 a ex:Point.

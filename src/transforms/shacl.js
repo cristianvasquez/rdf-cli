@@ -2,8 +2,8 @@ import { glob } from 'glob'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
-import Validator from 'shacl-engine/Validator.js'
 import { streamFileQuads } from '../sources/paths.js'
+import { createValidator } from './shaclFixes.js'
 import { storeToDataset } from './sparql.js'
 
 const BUILTIN_SHAPES = {
@@ -48,7 +48,7 @@ export async function validate (store, shapeSources, { reportGraph = 'urn:valida
   const shapesDataset = await loadShapesDataset(shapeSources)
   const dataDataset = storeToDataset(store)
 
-  const validator = new Validator(shapesDataset, { factory: rdf })
+  const validator = createValidator(shapesDataset, { factory: rdf })
   const report = await validator.validate({ dataset: dataDataset })
   const quads = [...dataDataset, ...reportToNamedGraph(report, reportGraph)]
 

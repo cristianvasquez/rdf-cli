@@ -29,9 +29,12 @@ importers:
       rdf-ext:
         specifier: ^2.5.1
         version: 2.6.0
+      rdf-literal:
+        specifier: ^2.0.0
+        version: 2.0.0
       shacl-engine:
-        specifier: github:cristianvasquez/shacl-engine#fix/not-multi-qualified-node
-        version: https://codeload.github.com/cristianvasquez/shacl-engine/tar.gz/fff1373f2dece77419a47b177a6a4f71a0beec88
+        specifier: ~1.1.2
+        version: 1.1.2
 
 packages:
 
@@ -1408,9 +1411,8 @@ packages:
   setimmediate@1.0.5:
     resolution: {integrity: sha512-MATJdZp8sLqDl/68LfQmbP8zKPLQNV6BIZoIgrscFDQ+RsvK/BxeDQOgyxKKoh0y/8h3BqVFnCqQ/gd+reiIXA==}
 
-  shacl-engine@https://codeload.github.com/cristianvasquez/shacl-engine/tar.gz/fff1373f2dece77419a47b177a6a4f71a0beec88:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/cristianvasquez/shacl-engine/tar.gz/fff1373f2dece77419a47b177a6a4f71a0beec88}
-    version: 1.1.2
+  shacl-engine@1.1.2:
+    resolution: {integrity: sha512-ypclUwHJ6KPYUZb8ggslN7BSOwza9vgIwQgLY0oey0Xbzla6B7cRWroeDvfkntYzU1HnERgGvC/qsKge3a6s1Q==}
 
   shaclc-parse@1.4.3:
     resolution: {integrity: sha512-MQJWVFjfzzMUvieFO0STWjIo49ywy63UkVSsr0e8+8xHUns6X+i3yWYxNKd+GtSEJjBNZxxrUubog+hnd7PvRA==}
@@ -4807,7 +4809,7 @@ snapshots:
 
   setimmediate@1.0.5: {}
 
-  shacl-engine@https://codeload.github.com/cristianvasquez/shacl-engine/tar.gz/fff1373f2dece77419a47b177a6a4f71a0beec88:
+  shacl-engine@1.1.2:
     dependencies:
       '@comunica/query-sparql-rdfjs-lite': 5.4.1
       '@comunica/utils-bindings-factory': 5.4.0

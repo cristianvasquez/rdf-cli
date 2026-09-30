@@ -9,7 +9,7 @@ repo-group: rdf
 
 # [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-cli)
 
-`rdf`: RDF commands that compose over Unix pipes. Install: `pnpm install && pnpm link --global`.
+`rdf`: RDF commands that compose over Unix pipes. Install: `npm install -g rdf-cli`.
 
 ## Commands
 

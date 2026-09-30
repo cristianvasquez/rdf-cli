@@ -11,7 +11,7 @@
 // explicit constraint (e.g. [ sh:path rdf:type ]), which lands them in
 // coverage.
 import rdf from 'rdf-ext'
-import { Validator } from 'shacl-engine'
+import { createValidator } from './shaclFixes.js'
 
 const SH = 'http://www.w3.org/ns/shacl#'
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
@@ -34,7 +34,7 @@ function shapeTargets (shapes) {
 // quads would break the partition laws: coverage comes back as bare triples
 // that no longer match the originals.
 export async function claim ({ shapes, working, factory = rdf }) {
-  const validator = new Validator(shapes, { coverage: true, factory })
+  const validator = createValidator(shapes, { coverage: true, factory })
   const report = await validator.validate({ dataset: working })
 
   // owned: coverage quads flattened to (s, p, o)
