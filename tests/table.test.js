@@ -59,3 +59,15 @@ test('writeTable produces no output for empty stream', async () => {
   await writeTable(textStream(''), { out })
   assert.equal(out.get(), '')
 })
+
+test('writeTable header is the union of keys: a variable unbound in the first row is kept', async () => {
+  const out = makeCapture()
+  await writeTable(textStream('{"m":"urn:a","l":"Frame A"}\n{"m":"urn:b","l":"Note B","text":"hello"}\n'), { out })
+  assert.equal(out.get(), 'm,l,text\nurn:a,Frame A,\nurn:b,Note B,hello\n')
+})
+
+test('writeTable header keeps the projection order when early rows skip a middle variable', async () => {
+  const out = makeCapture()
+  await writeTable(textStream('{"m":"1","text":"t"}\n{"m":"2","l":"L"}\n{"m":"3","l":"L","text":"t"}\n'), { format: 'tsv', out })
+  assert.equal(out.get().split('\n')[0], 'm\tl\ttext')
+})

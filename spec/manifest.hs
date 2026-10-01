@@ -488,7 +488,8 @@ writePretty     :: QuadStream -> MimeType -> Prefixes -> Either Error (IO ())
 bindingToJSONL  :: Row -> Text
 writeBindings   :: BindingsStream -> IO ()
 
-writeTable      :: Stream Line -> TableFormat -> IO ()
+writeTable      :: Stream Line -> TableFormat -> IO ()  -- ^ buffers all rows: header = union of row keys
+                                                    --   (select omits unbound vars; a var unbound in every row has no column).
 
 type Prefixes = [(Prefix, Iri)]
 type Prefix   = String
