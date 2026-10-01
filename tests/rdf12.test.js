@@ -192,3 +192,44 @@ test('a dataset keeps "x"@ar and "x"@ar--rtl as two quads', { todo: 'upstream @r
   const quads = await parse('text/turtle', PREFIX + 'ex:s ex:p "x"@ar--rtl, "x"@ar .')
   assert.equal(rdf.dataset(quads).size, 2)
 })
+
+// RDF 1.2 version directive. n3 2.7.12 reads "@prefix" after a literal as a
+// language tag, also after whitespace, so 'VERSION "1.2"' fails before '@prefix'.
+test('parse reads VERSION "1.2" before @prefix and @base', async () => {
+  for (const mimeType of ['text/turtle', 'application/trig']) {
+    const quads = await parse(mimeType, 'VERSION "1.2"\n@prefix ex: <http://ex/> .\n@base <http://ex/> .\nex:a ex:b <c> .\n')
+    assert.deepEqual(lines(quads), ['<http://ex/a> <http://ex/b> <http://ex/c> .\n'])
+  }
+  const tagged = await parse('text/turtle', '<http://ex/a> <http://ex/b> "x"@en, "y"@en-GB--rtl .\n')
+  assert.deepEqual(lines(tagged), ['<http://ex/a> <http://ex/b> "x"@en .\n', '<http://ex/a> <http://ex/b> "y"@en-GB--rtl .\n'])
+})
+
+// End to end: rdf read (.ttl, .trig, .nq) | rdf pretty (turtle, trig, nquads),
+// with triple terms, reified triples and annotations; each output reads back
+// isomorphic to the input.
+test('rdf read | rdf pretty keeps triple terms, reifiers and annotations in Turtle, TriG and N-Quads', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rdf12-'))
+  const body = `ex:p1 ex:element <<( ex:alice ex:knows <<( _:x ex:age 42 )>> )>> .
+  << ex:alice ex:age 23 >> ex:certainty 0.9 .
+  << ex:alice ex:age 24 ~ ex:r2 >> ex:source ex:census .
+  ex:a ex:b ex:c ~ ex:r1 {| ex:source ex:wiki |} .
+  ex:a ex:b ex:d {| ex:source _:x |} .`
+  const run = (args, input) => execFileSync('node', [BIN, ...args], { input, encoding: 'utf8' })
+  const canon = (nq) => run(['canonicalize'], nq)
+  const files = {
+    'in.ttl': `VERSION "1.2"\n${PREFIX}${body}\n`,
+    'in.trig': `VERSION "1.2"\n${PREFIX}ex:g { ${body} }\n${body}\n`,
+  }
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text)
+  writeFileSync(join(dir, 'in.nq'), run(['read', join(dir, 'in.trig')]))
+  for (const name of ['in.ttl', 'in.trig', 'in.nq']) {
+    const nq = run(['read', join(dir, name)])
+    assert.match(nq, /rdf-syntax-ns#reifies> <<\( /, name)
+    const graphs = name !== 'in.ttl'
+    for (const [format, ext] of [['trig', 'trig'], ['nquads', 'nq'], ...(graphs ? [] : [['turtle', 'ttl']])]) {
+      const out = join(dir, `out-${name}.${ext}`)
+      writeFileSync(out, run(['pretty', '--format', format], nq))
+      assert.equal(canon(run(['read', out])), canon(nq), `${name} -> ${format}`)
+    }
+  }
+})
