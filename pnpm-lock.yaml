@@ -11,6 +11,12 @@ importers:
       '@rdfjs/formats':
         specifier: ^4.0.0
         version: 4.0.1
+      '@rdfjs/serializer-turtle':
+        specifier: ^1.1.5
+        version: 1.1.5
+      '@rdfjs/to-ntriples':
+        specifier: ^3.0.1
+        version: 3.0.1
       citty:
         specifier: ^0.1.6
         version: 0.1.6
@@ -859,8 +865,8 @@ packages:
   '@rdfjs/parser-jsonld@2.1.3':
     resolution: {integrity: sha512-VYnPEwVdqFAPTo9F8XIN4UpGPdNzhBaCFv5b5OT74pA7H8so4aTno3Yd6M5I9bhTrUoCQjpjgr+ugYlvWxdBIA==}
 
-  '@rdfjs/parser-n3@2.1.0':
-    resolution: {integrity: sha512-/DiosB+0vPzgAs1WXcCB8MbA5hqq0fIh9VhMg7fBmoJ/I8Xl6Op/AOxVu9x1XZCHSNwO/VsJT/HYKEctZVRKSQ==}
+  '@rdfjs/parser-n3@2.2.0':
+    resolution: {integrity: sha512-gsQpcjAJ/uNoCt/SV/Eteuxjfbcmyh3cnh/Agixik8DqodLrcqxeeAJqDe+36jMxRQ08FDKTdKMxwKtTkS11vg==}
 
   '@rdfjs/prefix-map@0.1.2':
     resolution: {integrity: sha512-qapFYVPYyYepg0sFy7T512667iZsN9a3RNcyNBTBV+O8wrU3v/URQZOipCTNrEm1BXzZ7KCK1Yi8HrE1y+uRuQ==}
@@ -1276,6 +1282,10 @@ packages:
 
   n3@1.26.0:
     resolution: {integrity: sha512-SQknS0ua90rN+3RHuk8BeIqeYyqIH/+ecViZxX08jR4j6MugqWRjtONl3uANG/crWXnOM2WIqBJtjIhVYFha+w==}
+    engines: {node: '>=12.0'}
+
+  n3@2.7.12:
+    resolution: {integrity: sha512-Hy6dfGg9yniLQpSBirvH2E2yO3EG7dSmA3aefRbtO411oqtzG8roD3h1kTc/N065bivCOPfTFIjf0KlwW7KlnQ==}
     engines: {node: '>=12.0'}
 
   negotiate@1.0.1:
@@ -4066,7 +4076,7 @@ snapshots:
   '@rdfjs/formats@4.0.1':
     dependencies:
       '@rdfjs/parser-jsonld': 2.1.3
-      '@rdfjs/parser-n3': 2.1.0
+      '@rdfjs/parser-n3': 2.2.0
       '@rdfjs/serializer-jsonld': 2.0.1
       '@rdfjs/serializer-jsonld-ext': 4.0.2
       '@rdfjs/serializer-ntriples': 2.0.1
@@ -4096,12 +4106,12 @@ snapshots:
       jsonld-streaming-parser: 5.0.1
       readable-stream: 4.7.0
 
-  '@rdfjs/parser-n3@2.1.0':
+  '@rdfjs/parser-n3@2.2.0':
     dependencies:
       '@rdfjs/data-model': 2.1.1
       '@rdfjs/sink': 2.0.1
       duplex-to: 2.0.0
-      n3: 1.26.0
+      n3: 2.7.12
       readable-stream: 4.7.0
 
   '@rdfjs/prefix-map@0.1.2':
@@ -4597,6 +4607,11 @@ snapshots:
   ms@2.1.3: {}
 
   n3@1.26.0:
+    dependencies:
+      buffer: 6.0.3
+      readable-stream: 4.7.0
+
+  n3@2.7.12:
     dependencies:
       buffer: 6.0.3
       readable-stream: 4.7.0

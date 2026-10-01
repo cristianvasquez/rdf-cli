@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
 import { NQUADS, NTRIPLES, TRIG, TURTLE, guessMimeType } from '../formats.js'
+import { quadToNQ } from '../serializers/ntriples.js'
 import { datasetToString } from '../sinks/pretty.js'
 import { collectDataset } from '../utils.js'
 
@@ -16,10 +17,10 @@ import { collectDataset } from '../utils.js'
 
 async function serialize (dataset, mimeType, prefixes) {
   if (mimeType === TRIG || mimeType === TURTLE) return datasetToString(dataset, { format: TURTLE, prefixes })
-  const serializer = mimeType === NQUADS ? NTRIPLES : mimeType
-  if (!formats.serializers.has(serializer)) throw new Error(`no serializer for ${mimeType}`)
+  if (mimeType === NQUADS || mimeType === NTRIPLES) return [...dataset].map(quadToNQ).join('')
+  if (!formats.serializers.has(mimeType)) throw new Error(`no serializer for ${mimeType}`)
   const chunks = []
-  for await (const chunk of formats.serializers.import(serializer, Readable.from([...dataset]))) chunks.push(chunk)
+  for await (const chunk of formats.serializers.import(mimeType, Readable.from([...dataset]))) chunks.push(chunk)
   return chunks.join('')
 }
 

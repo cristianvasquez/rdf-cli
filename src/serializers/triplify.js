@@ -1,5 +1,17 @@
-import { TurtleSerializer } from '@rdfjs/formats'
+import TurtleSerializer from '@rdfjs/serializer-turtle/lib/TurtleSerializer.js'
 import rdf from 'rdf-ext'
+
+// RDF 1.2: @rdfjs/serializer-turtle 1.1.5 writes a triple term as a statement
+// ("s p o .") inside the outer statement. All terms go through toNT, so this
+// subclass writes a triple term as "<<( s p o )>>", with the prefixes.
+class Rdf12TurtleSerializer extends TurtleSerializer {
+  toNT (term) {
+    if (term.termType === 'Quad') {
+      return `<<( ${this.toNT(term.subject)} ${this.toNT(term.predicate)} ${this.toNT(term.object)} )>>`
+    }
+    return super.toNT(term)
+  }
+}
 
 function prefixesToMap (prefixes = {}) {
   return new Map(
@@ -11,8 +23,7 @@ function prefixesToMap (prefixes = {}) {
 }
 
 function serializeTriples (quads, prefixMap) {
-  const serializer = new TurtleSerializer({ prefixes: prefixMap })
-  return serializer.transform(rdf.dataset(quads))
+  return new Rdf12TurtleSerializer(rdf.dataset(quads), { prefixes: prefixMap }).serialize().join('')
 }
 
 function splitHeader (turtle) {
