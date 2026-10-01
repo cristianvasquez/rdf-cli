@@ -480,6 +480,9 @@ writeQuads      :: QuadStream -> MimeType -> IO ()          -- ^ default MimeTyp
 
 loadPrefixes    :: Maybe FilePath -> IO Prefixes           -- ^ discovers .prefixes.json / prefixes.json.
 triplify        :: Dataset -> Prefixes -> IO Text -- ^ pretty TriG, falling back to Turtle when graphless.
+-- ^ Law: parse (triplify d) is isomorphic to d. One blank-node numbering for all
+--   graphs; a blank node used in more than one graph, inside a triple term, or in a
+--   cycle is written with its label; each subject's triples are written once.
 datasetToString :: Dataset -> MimeType -> Prefixes -> IO Text
 -- | Default format = trig. nquads/ntriples delegate to 'writeQuads' (ntriples drops graphs).
 -- Any other format is an error; there is no fallback to trig.
