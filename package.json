@@ -45,7 +45,8 @@
   "homepage": "https://github.com/cristianvasquez/rdf-cli#readme",
   "dependencies": {
     "@rdfjs/formats": "^4.0.0",
-    "@rdfjs/serializer-turtle": "^1.1.5",
+    "@rdfjs/parser-n3": "^2.2.0",
+    "@rdfjs/serializer-turtle": "1.1.5",
     "@rdfjs/to-ntriples": "^3.0.1",
     "citty": "^0.1.6",
     "get-stream": "^9.0.1",

@@ -1,5 +1,6 @@
 import { Transform } from 'node:stream'
 import rdf from 'rdf-ext'
+import { mapTerm } from '../utils.js'
 
 export const DEFAULT_SKOLEM_BASE_IRI = 'https://rdf-viz.local/.well-known/genid/'
 
@@ -14,11 +15,12 @@ export function skolemize (baseIri = DEFAULT_SKOLEM_BASE_IRI) {
   const base = baseIri.endsWith('/') ? baseIri : `${baseIri}/`
   const blankNodes = rdf.termMap()
 
-  const map = (term) => {
-    if (term.termType !== 'BlankNode') return term
-    if (!blankNodes.has(term)) blankNodes.set(term, rdf.namedNode(`${base}${randomId()}`))
-    return blankNodes.get(term)
-  }
+  // Blank nodes inside triple terms get the same IRI as outside.
+  const map = (term) => mapTerm(term, (t) => {
+    if (t.termType !== 'BlankNode') return t
+    if (!blankNodes.has(t)) blankNodes.set(t, rdf.namedNode(`${base}${randomId()}`))
+    return blankNodes.get(t)
+  })
 
   return new Transform({
     objectMode: true,

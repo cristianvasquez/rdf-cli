@@ -1,47 +1,53 @@
 import { _canonizeSync } from 'rdf-canonize'
 import rdf from 'rdf-ext'
-import { termToNT } from './ntriples.js'
+import { termsOf } from '../utils.js'
+import { isDirectional, termToNT } from './ntriples.js'
 
-// Canonical N-Quads text (RDFC-1.0) of quads that can contain RDF 1.2 triple
-// terms. RDFC-1.0 does not define triple terms, and rdf-canonize 5.0.0 fails on
-// them. Each distinct triple term is encoded as a blank node with three quads in
-// a reserved graph (subject, predicate, object), so that the blank nodes inside
-// triple terms get canonical labels too. After canonicalization these quads are
-// decoded back to `<<( s p o )>>` and the lines are sorted again. Without triple
-// terms, the output is that of rdf-canonize. Synchronous.
+// Canonical N-Quads text (RDFC-1.0) of quads that can contain RDF 1.2 terms:
+// triple terms, and literals with a base direction. RDFC-1.0 does not define
+// them: rdf-canonize 5.0.0 fails on a triple term, and writes a directional
+// literal as "v"^^rdf:dirLangString (language and direction lost).
+// Each distinct such term is encoded as a blank node with quads in a reserved
+// graph, so that the blank nodes inside triple terms get canonical labels too:
+//   triple term:         _:t <NS#subject> s, <NS#predicate> p, <NS#object> o
+//   directional literal: _:t <NS#literal> "v"@lang, <NS#direction> "dir"
+// After canonicalization these quads are decoded back and the lines are sorted
+// again. The canonical labels then have gaps (the encoding nodes use some).
+// Without such terms, the output is that of rdf-canonize. Synchronous.
+// Options as @rdfjs/normalize (rdf-ext dataset.toCanonical()).
 
 const NS = 'urn:x-rdf-cli:triple-term'
 const GRAPH = rdf.namedNode(NS)
 const PARTS = ['subject', 'predicate', 'object']
-const PREDICATE = Object.fromEntries(PARTS.map((part) => [part, rdf.namedNode(`${NS}#${part}`)]))
+const PREDICATE = Object.fromEntries([...PARTS, 'literal', 'direction'].map((part) => [part, rdf.namedNode(`${NS}#${part}`)]))
 const GRAPH_SUFFIX = ` <${NS}> .`
+const OPTIONS = { algorithm: 'RDFC-1.0', maxDeepIterations: 500 }
 
-const hasTripleTerm = (quad) => quad.subject.termType === 'Quad' || quad.object.termType === 'Quad'
+const isSpecial = (term) => term.termType === 'Quad' || isDirectional(term)
 
 // A blank node label prefix that no input label starts with.
-function freshPrefix (quads) {
-  const labels = []
-  const visit = (term) => {
-    if (term.termType === 'BlankNode') labels.push(term.value)
-    if (term.termType === 'Quad') for (const part of [...PARTS, 'graph']) visit(term[part])
-  }
-  for (const quad of quads) visit(quad)
+function freshPrefix (labels) {
   let prefix = 'tt'
   while (labels.some((label) => label.startsWith(prefix))) prefix += '_'
   return prefix
 }
 
-function encode (quads) {
-  const prefix = freshPrefix(quads)
+function encode (quads, labels) {
+  const prefix = freshPrefix(labels)
   const nodes = new Map()
   const extra = []
   const term = (t) => {
-    if (t.termType !== 'Quad') return t
+    if (!isSpecial(t)) return t
     const key = termToNT(t)
     if (!nodes.has(key)) {
       const node = rdf.blankNode(`${prefix}${nodes.size}`)
       nodes.set(key, node)
-      for (const part of PARTS) extra.push(rdf.quad(node, PREDICATE[part], term(t[part]), GRAPH))
+      if (t.termType === 'Quad') {
+        for (const part of PARTS) extra.push(rdf.quad(node, PREDICATE[part], term(t[part]), GRAPH))
+      } else {
+        extra.push(rdf.quad(node, PREDICATE.literal, rdf.literal(t.value, t.language), GRAPH))
+        extra.push(rdf.quad(node, PREDICATE.direction, rdf.literal(t.direction), GRAPH))
+      }
     }
     return nodes.get(key)
   }
@@ -57,40 +63,43 @@ function splitLine (line) {
   return { subject: line.slice(0, s), predicate: line.slice(s + 1, p), rest: line.slice(p + 1) }
 }
 
-function decode (nquads, ttLabels) {
+function decode (nquads, specialLabels) {
   const parts = new Map()
   const lines = []
   for (const line of nquads.split('\n').filter(Boolean)) {
-    if (!line.endsWith(GRAPH_SUFFIX)) { lines.push(line); continue }
     const { subject, predicate, rest } = splitLine(line)
-    const part = PARTS.find((name) => predicate === `<${NS}#${name}>`)
-    if (!part) throw new Error(`unexpected quad in ${NS}: ${line}`)
+    // The input has no IRI of NS (checked), so this test only matches encoding quads.
+    if (!specialLabels.has(subject) || !predicate.startsWith(`<${NS}#`)) { lines.push(line); continue }
     const entry = parts.get(subject) ?? parts.set(subject, {}).get(subject)
-    entry[part] = rest.slice(0, -GRAPH_SUFFIX.length)
+    entry[predicate.slice(NS.length + 2, -1)] = rest.slice(0, -GRAPH_SUFFIX.length)
   }
   const text = (token) => {
-    if (!ttLabels.has(token)) return token
-    const { subject, predicate, object } = parts.get(token)
+    if (!specialLabels.has(token)) return token
+    const { subject, predicate, object, literal, direction } = parts.get(token)
+    if (literal !== undefined) return `${literal}--${direction.slice(1, -1)}`
     return `<<( ${text(subject)} ${predicate} ${text(object)} )>>`
   }
   const objectToken = (rest) => (rest.startsWith('_:') ? rest.slice(0, rest.indexOf(' ')) : null)
   return lines.map((line) => {
     const { subject, predicate, rest } = splitLine(line)
     const object = objectToken(rest)
-    const restText = object && ttLabels.has(object) ? text(object) + rest.slice(object.length) : rest
+    const restText = object && specialLabels.has(object) ? text(object) + rest.slice(object.length) : rest
     return `${text(subject)} ${predicate} ${restText}`
   })
 }
 
 export function canonicalNQuads (quads) {
   quads = [...quads]
-  if (!quads.some(hasTripleTerm)) return _canonizeSync(quads, { algorithm: 'RDFC-1.0' })
-  if (quads.some((q) => q.graph.equals(GRAPH))) throw new Error(`the graph ${NS} is reserved for triple terms`)
-  const { encoded, prefix } = encode(quads)
+  const terms = quads.flatMap((q) => [...termsOf(q)])
+  if (!terms.some(isSpecial)) return _canonizeSync(quads, OPTIONS)
+  if (terms.some((t) => t.termType === 'NamedNode' && (t.value === NS || t.value.startsWith(`${NS}#`)))) {
+    throw new Error(`the IRIs of ${NS} are reserved for the encoding of RDF 1.2 terms`)
+  }
+  const { encoded, prefix } = encode(quads, terms.filter((t) => t.termType === 'BlankNode').map((t) => t.value))
   const ids = new Map()
-  const nquads = _canonizeSync(encoded, { algorithm: 'RDFC-1.0', canonicalIdMap: ids })
-  const ttLabels = new Set([...ids].filter(([input]) => input.startsWith(prefix)).map(([, id]) => `_:${id}`))
-  const lines = decode(nquads, ttLabels)
+  const nquads = _canonizeSync(encoded, { ...OPTIONS, canonicalIdMap: ids })
+  const specialLabels = new Set([...ids].filter(([input]) => input.startsWith(prefix)).map(([, id]) => `_:${id}`))
+  const lines = decode(nquads, specialLabels)
   lines.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   return lines.map((line) => `${line}\n`).join('')
 }

@@ -1,15 +1,65 @@
 import TurtleSerializer from '@rdfjs/serializer-turtle/lib/TurtleSerializer.js'
+import { activeNamespaces } from '@rdfjs/serializer-turtle/lib/utils.js'
 import rdf from 'rdf-ext'
+import { directionalToNT, isDirectional } from './ntriples.js'
 
-// RDF 1.2: @rdfjs/serializer-turtle 1.1.5 writes a triple term as a statement
-// ("s p o .") inside the outer statement. All terms go through toNT, so this
-// subclass writes a triple term as "<<( s p o )>>", with the prefixes.
+// A reference that is not a node: it only makes refs.length larger.
+const PLACEHOLDER = Object.freeze({ quads: [], predicates: new Map(), isListItem: false })
+
+function * blankNodesIn (term) {
+  if (term.termType === 'BlankNode') yield term
+  if (term.termType === 'Quad') for (const t of [term.subject, term.object]) yield * blankNodesIn(t)
+}
+
+// RDF 1.2 for @rdfjs/serializer-turtle 1.1.5, which does not know triple terms
+// and base directions. All terms go through toNT.
+// - A triple term is written as "<<( s p o )>>", a directional literal as "v"@lang--dir.
+// - The serializer writes a blank node as "[ … ]" when it counts 0 or 1
+//   references, and it does not count uses inside triple terms. So each blank
+//   node that is also inside a triple term gets two placeholder references,
+//   and is written with its label everywhere. The tree (and its list
+//   detection) is complete when super() returns; after it, only the
+//   serializer reads refs.length.
+// - The prefixes of the terms inside triple terms are declared too.
 class Rdf12TurtleSerializer extends TurtleSerializer {
+  constructor (quads, options) {
+    super(quads, options)
+    const inside = rdf.termSet()
+    for (const node of this.tree.nodes.values()) {
+      if (node.term.termType === 'Quad') for (const b of blankNodesIn(node.term)) inside.add(b)
+    }
+    for (const term of inside) this.tree.nodes.get(term)?.refs.push(PLACEHOLDER, PLACEHOLDER)
+  }
+
   toNT (term) {
     if (term.termType === 'Quad') {
       return `<<( ${this.toNT(term.subject)} ${this.toNT(term.predicate)} ${this.toNT(term.object)} )>>`
     }
+    if (isDirectional(term)) return directionalToNT(term, (t) => super.toNT(t))
     return super.toNT(term)
+  }
+
+  // As TurtleSerializer.serializePrefixes, with the terms inside triple terms,
+  // and a directional literal checked as a language-tagged literal.
+  serializePrefixes () {
+    const nodes = []
+    const add = (term) => {
+      if (term.termType === 'Quad') {
+        for (const t of [term.subject, term.predicate, term.object]) add(t)
+        return
+      }
+      nodes.push({ term: isDirectional(term) ? rdf.literal(term.value, term.language) : term, predicates: new Map() })
+    }
+    for (const node of this.tree.nodes.values()) {
+      add(node.term)
+      for (const predicate of node.predicates.keys()) add(predicate)
+    }
+    const active = activeNamespaces({ nodes }, this.prefixes)
+    if (active.size === 0) return
+    this.state.serializedPrefixes = true
+    for (const prefix of [...active].sort()) {
+      this.output.push(`@prefix ${prefix}: <${this.prefixes.get(prefix).value}>.\n`)
+    }
   }
 }
 

@@ -10,6 +10,7 @@ import { _canonizeSync } from 'rdf-canonize'
 import { canonicalNQuads } from '../src/serializers/canonical.js'
 import { quadToNQ } from '../src/serializers/ntriples.js'
 import { triplify } from '../src/serializers/triplify.js'
+import { skolemize } from '../src/transforms/skolem.js'
 import { parseQuads } from '../src/sources/parse.js'
 
 // RDF 1.2 triple terms: read, and write as N-Quads, Turtle and TriG.
@@ -105,4 +106,86 @@ test('rdf canonicalize keeps triple terms', () => {
   const nq = '<http://ex/s> <http://ex/p> <<( _:x <http://ex/q> <http://ex/o> )>> .\n_:x <http://ex/name> "A" .\n'
   const out = execFileSync('node', [BIN, 'canonicalize'], { input: nq, encoding: 'utf8' })
   assert.match(out, /<<\( _:c14n\d+ <http:\/\/ex\/q> <http:\/\/ex\/o> \)>>/)
+})
+
+// Review findings (branch rdf-1.2-triple-terms).
+const sameDataset = async (text, quads) => assert.equal(canonicalNQuads(await parse('text/turtle', text)), canonicalNQuads(quads))
+
+test('triplify keeps the identity of a blank node that is also inside a triple term', async () => {
+  for (const body of [
+    'ex:a ex:b _:o ~ _:r {| ex:src ex:w |} . _:o ex:v 1 .',
+    'ex:s ex:p <<( _:a ex:q ex:o )>> . _:a ex:name "A" .',
+    'ex:s ex:p <<( _:a ex:q ex:o )>> . _:a ex:name "A" . ex:t ex:r _:a .',
+    'ex:s ex:q _:x . ex:s ex:p <<( ex:a ex:b _:x )>> .',
+    'ex:s ex:p <<( _:l ex:q ex:o )>> . _:l rdf:first ex:a ; rdf:rest ( ex:b ) .',
+  ]) {
+    const quads = await parse('text/turtle', PREFIX + '@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n' + body)
+    await sameDataset(await triplify(rdf.dataset(quads), PREFIXES), quads)
+  }
+})
+
+test('triplify declares the prefixes used inside triple terms', async () => {
+  const quads = await parse('text/turtle', PREFIX + 'ex:s ex:p <<( <http://foo/a> <http://foo/b> "1"^^<http://foo/dt> )>> .')
+  const text = await triplify(rdf.dataset(quads), { ...PREFIXES, foo: 'http://foo/' })
+  assert.match(text, /@prefix foo: <http:\/\/foo\/>/)
+  await sameDataset(text, quads)
+})
+
+test('literals with a base direction keep language and direction', async () => {
+  const quads = await parse('text/turtle', PREFIX + 'ex:s ex:p "hello"@en--ltr, "x"@ar--rtl, "z"@ar . ex:s ex:q <<( ex:a ex:b "y"@en--rtl )>> .')
+  const nq = lines(quads)
+  assert.ok(nq.includes('<http://ex/s> <http://ex/p> "hello"@en--ltr .\n'))
+  assert.deepEqual(lines(await parse('application/n-quads', nq.join(''))), nq)
+  const ttl = await triplify(rdf.dataset(quads), PREFIXES)
+  assert.match(ttl, /"hello"@en--ltr/)
+  assert.doesNotMatch(ttl, /@prefix rdf:/)
+  await sameDataset(ttl, quads)
+  const canonical = canonicalNQuads(quads)
+  assert.match(canonical, /"hello"@en--ltr/)
+  assert.match(canonical, /"y"@en--rtl/)
+  assert.notEqual(canonicalNQuads(quads.filter((q) => q.object.direction !== 'rtl')), canonical)
+})
+
+test('canonical form handles blank-node cycles as toCanonical() does (maxDeepIterations 500)', async () => {
+  const cycles = PREFIX + '_:a0 ex:p _:b0 . _:b0 ex:p _:a0 . _:a1 ex:p _:b1 . _:b1 ex:p _:a1 .'
+  assert.ok(canonicalNQuads(await parse('text/turtle', cycles)))
+  assert.ok(canonicalNQuads(await parse('text/turtle', cycles + ' ex:s ex:p <<( _:a0 ex:q _:b1 )>> .')))
+})
+
+test('canonical form refuses the reserved IRIs in any position', async () => {
+  const quads = await parse('text/turtle', PREFIX + 'ex:s ex:p <<( ex:a ex:b ex:c )>> . ex:s ex:p <urn:x-rdf-cli:triple-term> .')
+  assert.throws(() => canonicalNQuads(quads), /reserved/)
+})
+
+test('rdf read scopes blank nodes inside triple terms as outside', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rdf12-'))
+  const file = join(dir, 'in.ttl')
+  writeFileSync(file, PREFIX + 'ex:s ex:p <<( _:o ex:q ex:r )>> . _:o ex:v 1 .')
+  const nq = execFileSync('node', [BIN, 'read', file], { encoding: 'utf8' })
+  const labels = [...nq.matchAll(/_:(\S+)/g)].map((m) => m[1])
+  assert.equal(labels.length, 2)
+  assert.equal(new Set(labels).size, 1)
+})
+
+test('skolemize maps a blank node inside a triple term to the same IRI', async () => {
+  const quads = await parse('text/turtle', PREFIX + 'ex:s ex:p <<( _:o ex:q ex:r )>> . _:o ex:v 1 .')
+  const out = []
+  for await (const q of Readable.from(quads).pipe(skolemize('https://x/'))) out.push(q)
+  const inside = out.find((q) => q.object.termType === 'Quad').object.subject
+  const outside = out.find((q) => q.predicate.value === 'http://ex/v').subject
+  assert.equal(inside.termType, 'NamedNode')
+  assert.ok(inside.equals(outside))
+})
+
+test('parse keeps [ ] and an explicit _:b1 as two blank nodes', async () => {
+  const quads = await parse('text/turtle', PREFIX + 'ex:a ex:b _:b1 . [ ex:c ex:d ] .')
+  assert.notEqual(quads[0].object.value, quads[1].subject.value)
+})
+
+// Known limit: @rdfjs/dataset 2.0.2 (rdf-ext datasets) keys a literal by value
+// and language only (DatasetCore.js termToId), so "x"@ar and "x"@ar--rtl are
+// one quad in a dataset. Every command that collects a dataset loses one.
+test('a dataset keeps "x"@ar and "x"@ar--rtl as two quads', { todo: 'upstream @rdfjs/dataset 2.0.2 termToId ignores the direction' }, async () => {
+  const quads = await parse('text/turtle', PREFIX + 'ex:s ex:p "x"@ar--rtl, "x"@ar .')
+  assert.equal(rdf.dataset(quads).size, 2)
 })

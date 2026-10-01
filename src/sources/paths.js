@@ -3,6 +3,7 @@ import { glob } from 'glob'
 import rdf from 'rdf-ext'
 import { guessMimeType } from '../formats.js'
 import { parseQuads } from './parse.js'
+import { mapTerm } from '../utils.js'
 
 export function streamFileQuads (filePath, mimeType) {
   const resolved = mimeType || guessMimeType(filePath)
@@ -22,7 +23,7 @@ function pathToFileGraph (path) {
 // before the first '_' identify the file, so two files never share a label.
 function scopeBlankNodes (index) {
   const prefix = `b${index}_`
-  const term = (t) => (t.termType === 'BlankNode' ? rdf.blankNode(prefix + t.value) : t)
+  const term = (t) => mapTerm(t, (u) => (u.termType === 'BlankNode' ? rdf.blankNode(prefix + u.value) : u))
   return (quad) => rdf.quad(term(quad.subject), quad.predicate, term(quad.object), term(quad.graph))
 }
 
