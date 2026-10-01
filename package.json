@@ -11,6 +11,7 @@
     "./transforms": "./src/transforms/index.js",
     "./sinks": "./src/sinks/index.js",
     "./triplify": "./src/browser/triplify.js",
+    "./canonical": "./src/serializers/canonical.js",
     "./pipeline": "./src/pipeline/index.js",
     "./package.json": "./package.json"
   },

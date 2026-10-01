@@ -27,6 +27,11 @@ test('public api exposes a dedicated triplify entry point', async () => {
   assert.equal(typeof triplify, 'function')
 })
 
+test('public api exposes a dedicated canonical entry point', async () => {
+  const { canonicalNQuads } = await import('rdf-cli/canonical')
+  assert.equal(typeof canonicalNQuads, 'function')
+})
+
 test('public api supports composed pipeline usage', async () => {
   const source = sources.readFromGlob(['tests/fixtures/person-valid.ttl'])
   const transformed = Readable.from(source, { objectMode: true }).pipe(transforms.mapQuads('true', { graph: '<urn:graph>' }))
