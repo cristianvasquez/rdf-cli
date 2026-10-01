@@ -118,6 +118,9 @@ test('triplify keeps the identity of a blank node that is also inside a triple t
     'ex:s ex:p <<( _:a ex:q ex:o )>> . _:a ex:name "A" . ex:t ex:r _:a .',
     'ex:s ex:q _:x . ex:s ex:p <<( ex:a ex:b _:x )>> .',
     'ex:s ex:p <<( _:l ex:q ex:o )>> . _:l rdf:first ex:a ; rdf:rest ( ex:b ) .',
+    'ex:s ex:p _:h . _:h rdf:first 1 ; rdf:rest _:c2 . _:c2 rdf:first 2 ; rdf:rest rdf:nil . ex:t ex:q <<( _:c2 ex:r ex:o )>> .',
+    'ex:s ex:p ( 1 2 _:c3x 4 ) . ex:t ex:q <<( _:c3x ex:r ex:o )>> .',
+    'ex:s ex:p _:h . _:h rdf:first 1 ; rdf:rest _:c2 . _:c2 rdf:first 2 ; rdf:rest _:c3 . _:c3 rdf:first 3 ; rdf:rest _:c4 . _:c4 rdf:first 4 ; rdf:rest rdf:nil . ex:t ex:q <<( _:c3 ex:r ex:o )>> .',
   ]) {
     const quads = await parse('text/turtle', PREFIX + '@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n' + body)
     await sameDataset(await triplify(rdf.dataset(quads), PREFIXES), quads)

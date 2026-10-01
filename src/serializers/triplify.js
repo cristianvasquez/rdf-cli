@@ -3,6 +3,8 @@ import { activeNamespaces } from '@rdfjs/serializer-turtle/lib/utils.js'
 import rdf from 'rdf-ext'
 import { directionalToNT, isDirectional } from './ntriples.js'
 
+const RDF_REST = rdf.namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#rest')
+
 // A reference that is not a node: it only makes refs.length larger.
 const PLACEHOLDER = Object.freeze({ quads: [], predicates: new Map(), isListItem: false })
 
@@ -20,6 +22,9 @@ function * blankNodesIn (term) {
 //   and is written with its label everywhere. The tree (and its list
 //   detection) is complete when super() returns; after it, only the
 //   serializer reads refs.length.
+//   A list cell inside a triple term: the cells before it (up to the head)
+//   get placeholders too. Otherwise the head writes the whole list as
+//   "( … )", with new anonymous cells, and the cell is written twice.
 // - The prefixes of the terms inside triple terms are declared too.
 class Rdf12TurtleSerializer extends TurtleSerializer {
   constructor (quads, options) {
@@ -28,7 +33,17 @@ class Rdf12TurtleSerializer extends TurtleSerializer {
     for (const node of this.tree.nodes.values()) {
       if (node.term.termType === 'Quad') for (const b of blankNodesIn(node.term)) inside.add(b)
     }
-    for (const term of inside) this.tree.nodes.get(term)?.refs.push(PLACEHOLDER, PLACEHOLDER)
+    const previous = rdf.termMap() // cell -> the cell whose rdf:rest it is
+    for (const node of this.tree.nodes.values()) {
+      for (const next of node.predicates.get(RDF_REST)?.objects.values() ?? []) previous.set(next.term, node)
+    }
+    const labeled = rdf.termSet()
+    for (const term of inside) {
+      for (let node = this.tree.nodes.get(term); node && !labeled.has(node.term); node = previous.get(node.term)) {
+        labeled.add(node.term)
+        node.refs.push(PLACEHOLDER, PLACEHOLDER)
+      }
+    }
   }
 
   toNT (term) {
