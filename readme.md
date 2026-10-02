@@ -109,7 +109,9 @@ rdf read tests/fixtures/person-valid.ttl | rdf validate --shapes tests/fixtures/
 rdf read tests/fixtures/person-valid.ttl | rdf claim tests/fixtures/person-claimer.trig | rdf pretty
 ```
 
-Claimer design: [`spec/claim.md`](spec/claim.md).
+- Claimer 
+  - explainer: [demo](https://cristianvasquez.github.io/rdf-explainers/claimer-cascade/)
+  - design: [`spec/claim.md`](spec/claim.md).
 
 ## Library
 
