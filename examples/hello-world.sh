@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
+# Read files of different formats (RDF/XML, Turtle) into one stream of N-Quads.
+# The input has no graphs, so the output quads have no graph term.
+# Duplicates stay: rdf read does not merge statements.
 set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-# Minimal example: parse RDF files directly into a graphless dataset stream.
-
-rdf read "$ROOT/examples/data/*.rdf" "$ROOT/examples/data/*.ttl"
+rdf read 'data/*.rdf' 'data/*.ttl'
