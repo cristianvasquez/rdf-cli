@@ -21,13 +21,13 @@ function pathToFileGraph (path) {
 
 // One blank-node scope per file: label L in file i becomes b<i>_L. The digits
 // before the first '_' identify the file, so two files never share a label.
-function scopeBlankNodes (index) {
+export function scopeBlankNodes (index) {
   const prefix = `b${index}_`
   const term = (t) => mapTerm(t, (u) => (u.termType === 'BlankNode' ? rdf.blankNode(prefix + u.value) : u))
   return (quad) => rdf.quad(term(quad.subject), quad.predicate, term(quad.object), term(quad.graph))
 }
 
-function assignDefaultGraph (graph) {
+export function assignDefaultGraph (graph) {
   return (quad) =>
     quad.graph.termType === 'DefaultGraph'
       ? rdf.quad(quad.subject, quad.predicate, quad.object, graph)

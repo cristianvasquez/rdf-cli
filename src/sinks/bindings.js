@@ -10,7 +10,7 @@ export function bindingToJSONL (row) {
 }
 
 export async function writeBindings (rows, { out = process.stdout } = {}) {
-  for (const row of rows) {
+  for await (const row of rows) {
     out.write(bindingToJSONL(row))
   }
 }

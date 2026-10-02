@@ -47,3 +47,31 @@ export async function readQuery (args) {
   if (!query) fail('provide a SPARQL query as argument or via --query-file')
   return query
 }
+
+export const httpArgs = {
+  header: {
+    type: 'string',
+    alias: 'H',
+    description: 'Add an HTTP request header, "Name: value". Repeatable.',
+  },
+  timeout: {
+    type: 'string',
+    description: 'Abort the request when the server does not answer in this many milliseconds',
+  },
+}
+
+// --header and --timeout → { headers, timeoutMs }, or exit 1.
+export function httpOpts (args) {
+  const headers = {}
+  for (const header of [args.header ?? []].flat()) {
+    const at = header.indexOf(':')
+    if (at < 1) fail(`--header expects "Name: value", got: ${header}`)
+    headers[header.slice(0, at).trim()] = header.slice(at + 1).trim()
+  }
+  let timeoutMs
+  if (args.timeout !== undefined) {
+    timeoutMs = Number(args.timeout)
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) fail(`--timeout expects a positive integer, got: ${args.timeout}`)
+  }
+  return { headers, timeoutMs }
+}

@@ -20,8 +20,11 @@ Nodes are stream kinds; edges are commands.
 flowchart TD
   RDF([RDF bytes]) -- read --> NQ([N-Quads])
   PL([path lines]) -- from-paths --> NQ
+  IL([IRI lines]) -- fetch --> NQ
+  NIL([nothing]) -- endpoint-select --> B([JSONL bindings])
+  NIL -- endpoint-construct --> NQ
   NQ -- "filter · map · construct<br/>claim · validate · skolem<br/>canonicalize · dispatch" --> NQ
-  NQ -- select --> B([JSONL bindings])
+  NQ -- select --> B
   NQ -- ask --> T([text])
   NQ -- pretty --> RDF
   B -- table --> T
@@ -33,6 +36,9 @@ flowchart TD
 | --- | --- | --- |
 | `read` | RDF bytes → N-Quads | Parse RDF files or stdin into N-Quads. |
 | `from-paths` | path lines → N-Quads | Parse the files named on stdin, one path per line, into N-Quads. |
+| `fetch` | IRI lines → N-Quads | Dereference the IRIs on stdin, one per line, into N-Quads. |
+| `endpoint-select` | nothing → JSONL bindings | Run a SPARQL SELECT on a remote endpoint and emit the bindings as JSON Lines. |
+| `endpoint-construct` | nothing → N-Quads | Run a SPARQL CONSTRUCT or DESCRIBE on a remote endpoint and emit its triples, graphless. |
 | `filter` | N-Quads → N-Quads | Keep the quads where a SPARQL expression is true. |
 | `map` | N-Quads → N-Quads | Rewrite the quads that match --where with SPARQL expressions. |
 | `select` | N-Quads → JSONL bindings | Run a SPARQL SELECT and emit the bindings as JSON Lines. |

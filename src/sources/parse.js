@@ -22,11 +22,11 @@ function lexer () {
 // The default factory gives b<n>, the same as an explicit _:b<n> in the same
 // input, and the two nodes would merge. An explicit _:n3-<n> label still
 // collides with an anonymous node.
-export function parseQuads (mimeType, input) {
+export function parseQuads (mimeType, input, { baseIRI } = {}) {
   let count = 0
   const factory = Object.create(rdf)
   factory.blankNode = (name) => rdf.blankNode(name ?? `n3-${count++}`)
-  const options = { blankNodePrefix: '', factory }
+  const options = { blankNodePrefix: '', factory, baseIRI }
   if (N3_TYPES.has(mimeType)) options.lexer = lexer()
   return formats.parsers.import(mimeType, input, options)
 }

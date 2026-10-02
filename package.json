@@ -49,6 +49,7 @@
     "@rdfjs/serializer-turtle": "1.1.5",
     "@rdfjs/to-ntriples": "^3.0.1",
     "citty": "^0.1.6",
+    "fetch-sparql-endpoint": "^7.3.0",
     "get-stream": "^9.0.1",
     "glob": "^13.0.6",
     "n3": "^2.7.12",

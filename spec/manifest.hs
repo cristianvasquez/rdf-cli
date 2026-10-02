@@ -194,7 +194,11 @@ endpointSelect :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error Bi
 -- | CONSTRUCT or DESCRIBE on a remote endpoint. The protocol returns triples,
 -- so the output is graphless by type, as for local 'construct'. Any other
 -- query form ⇒ Left, and no request is sent. To name the output graph, pipe
--- @rdf map -g '<iri>'@.
+-- @rdf map -g '<iri>'@. The request prefers quad formats (N-Quads, TriG);
+-- a quad in a named graph ⇒ Left.
+--
+-- Not supported: GRAPH in the CONSTRUCT template (Jena's "CONSTRUCT quads").
+-- It is not in SPARQL 1.1 or 1.2; revisit when the spec adds it.
 --
 -- Law (blank-node scope): each response is its own blank-node scope.
 endpointConstruct :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error (Graphless QuadStream))

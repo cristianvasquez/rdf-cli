@@ -23,6 +23,9 @@ importers:
       citty:
         specifier: ^0.1.6
         version: 0.1.6
+      fetch-sparql-endpoint:
+        specifier: ^7.3.0
+        version: 7.3.0
       get-stream:
         specifier: ^9.0.1
         version: 9.0.1
@@ -974,6 +977,9 @@ packages:
   '@types/minimist@1.2.5':
     resolution: {integrity: sha512-hov8bUuiLiyFPGyFPE1lwWhmzYbirOXQNNo40+y3zow8aFVTeyn3VWL0VFFfdNddA8S4Vf0Tc062rzyNr7Paag==}
 
+  '@types/n3@1.26.4':
+    resolution: {integrity: sha512-PFEJWfs9mL7yLgjHpmVI/BfpZZPrsaDkUN8YiQXJoz8MkBsCYXys0DSo0r20y3+zqQupbUqxAYb8fFe8kbCbTQ==}
+
   '@types/node@18.19.130':
     resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
 
@@ -1151,6 +1157,10 @@ packages:
   fetch-blob@3.2.0:
     resolution: {integrity: sha512-7yAQpD2UMJzLi1Dqv7qFYnPbaPx7ZfFK6PiIxQ4PfkGPyNyl2Ugx+a/umUonmKqjhM4DnfbMvdX6otXq83soQQ==}
     engines: {node: ^12.20 || >= 14.13}
+
+  fetch-sparql-endpoint@7.3.0:
+    resolution: {integrity: sha512-pKVem6kZ4+ssy4tngyw4Z7ob08bGoSzYwqlV3s8Az/FnNdS7YFQgqBSUtS4kxCTYNflS7Xj07op1Os2xpDXKew==}
+    hasBin: true
 
   file-fetch@2.0.1:
     resolution: {integrity: sha512-jN4OveNyFdDIscQgaKL3vpPN5i4WnoQdWs1VQgT+3+SxsOW4+mQQzgOPQa4BjbKSkjeMv4xi+wLAMUKcL3CFtg==}
@@ -1445,6 +1455,12 @@ packages:
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
     deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
     hasBin: true
+
+  sparqljson-parse@3.3.0:
+    resolution: {integrity: sha512-XrmkCsrx4n69Ak63Ju7t91hVlWw7YhEPPdA+giW2GRTosQxPur0JWh7rQin/8aT0WjKZgBgGpsNnVBYyyWUq1w==}
+
+  sparqlxml-parse@3.3.0:
+    resolution: {integrity: sha512-FUVgcUr2YePDtDuu/UcMTF2ODiKBQdZdcfTSvaR3QhWVAcBmIGX4r4apsePK1zCc1kkRR53JBHXHJho/Pk538g==}
 
   stack-trace@0.0.10:
     resolution: {integrity: sha512-KGzahc7puUKkzyMt+IqAep+TVNbKP+k2Lmwhub39m1AsTSkaDutx56aDCo+HLDzf/D26BIHTJWNiTG1KAJiQCg==}
@@ -4270,6 +4286,11 @@ snapshots:
 
   '@types/minimist@1.2.5': {}
 
+  '@types/n3@1.26.4':
+    dependencies:
+      '@rdfjs/types': 2.0.1
+      '@types/node': 25.5.0
+
   '@types/node@18.19.130':
     dependencies:
       undici-types: 5.26.5
@@ -4448,6 +4469,21 @@ snapshots:
     dependencies:
       node-domexception: 1.0.0
       web-streams-polyfill: 3.3.3
+
+  fetch-sparql-endpoint@7.3.0:
+    dependencies:
+      '@traqula/parser-sparql-1-2': 1.3.1
+      '@traqula/rules-sparql-1-2': 1.3.0
+      '@types/n3': 1.26.4
+      '@types/readable-stream': 4.0.23
+      is-stream: 2.0.1
+      n3: 2.7.12
+      rdf-string: 2.0.1
+      readable-from-web: 1.0.0
+      sparqljson-parse: 3.3.0
+      sparqlxml-parse: 3.3.0
+      stream-to-string: 1.2.1
+      yargs: 17.7.2
 
   file-fetch@2.0.1:
     dependencies:
@@ -4867,6 +4903,21 @@ snapshots:
   sparqljs@3.7.4:
     dependencies:
       rdf-data-factory: 1.1.3
+
+  sparqljson-parse@3.3.0:
+    dependencies:
+      '@bergos/jsonparse': 1.4.2
+      '@types/readable-stream': 4.0.23
+      rdf-data-factory: 2.0.2
+      readable-stream: 4.7.0
+
+  sparqlxml-parse@3.3.0:
+    dependencies:
+      '@rubensworks/saxes': 6.0.1
+      '@types/readable-stream': 4.0.23
+      buffer: 6.0.3
+      rdf-data-factory: 2.0.2
+      readable-stream: 4.7.0
 
   stack-trace@0.0.10: {}
 
