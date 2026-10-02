@@ -18,9 +18,11 @@ const KINDS = {
   NQuads: 'N-Quads',
   JSONLinesBindings: 'JSONL bindings',
   PathLines: 'path lines',
+  IriLines: 'IRI lines',
+  Nil: 'nothing',
   Text: 'text',
 }
-const NODE_IDS = { RDF: 'RDF', NQuads: 'NQ', JSONLinesBindings: 'B', PathLines: 'PL', Text: 'T' }
+const NODE_IDS = { RDF: 'RDF', NQuads: 'NQ', JSONLinesBindings: 'B', PathLines: 'PL', Text: 'T', IriLines: 'IL', Nil: 'NIL' }
 const PER_LINE = 3
 
 const cmds = parseCmdAlgebra()

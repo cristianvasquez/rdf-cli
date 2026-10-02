@@ -78,6 +78,7 @@ data Stream a    -- ^ async, single-pass sequence.
 type QuadStream     = Stream Quad       -- ^ the "dataset stream"; wire encoding = N-Quads.
 type BindingsStream = Stream Row        -- ^ SPARQL SELECT results.
 type PathStream     = Stream FilePath   -- ^ one path per line.
+type IriStream      = Stream Iri        -- ^ one IRI per line.
 type Row            = [(Var, Term)]     -- ^ one SELECT solution.
 type Var            = String
 type Line           = String
@@ -101,6 +102,8 @@ data StreamKind
   | JSONLinesBindings   -- ^ select's output: one JSON object per line.
   | Text                -- ^ a sink's human/text output.
   | PathLines           -- ^ one file path per line (from-paths' stdin).
+  | IriLines            -- ^ one IRI per line (fetch's stdin).
+  | Nil                 -- ^ stdin is not read: the command is a pipeline origin.
 
 --------------------------------------------------------------------------------
 -- Formats  (src/formats.js)
@@ -150,6 +153,51 @@ readFromGlob  :: [Pattern] -> ReadOpts -> QuadStream
 -- Stdin is one blank-node scope: labels pass unchanged, so the N-Quads wire
 -- keeps them stable from stage to stage.
 readFromStdin :: Maybe MimeType -> IO QuadStream
+
+-- Remote sources  (src/sources/http.js). HTTP is a transport, not a format:
+-- 'fetchIri' is 'streamFileQuads' with an IRI as the location; the endpoint
+-- sources are 'select' and 'construct' evaluated by a remote engine
+-- (SPARQL 1.1 Protocol). JS: @rdfjs/fetch and fetch-sparql-endpoint.
+
+-- | Shared by every remote source.
+data HttpOpts = HttpOpts
+  { headers   :: [(String, String)]  -- ^ auth, user agent, extra headers.
+  , timeoutMs :: Maybe Int
+  }
+
+-- | The only accepted @fetch --graph-from@ value.
+data FetchGraphFrom
+  = Requested   -- ^ default graph := the requested IRI, not the final URL after redirects.
+
+-- | Dereference one IRI with content negotiation; the parser comes from the
+-- response Content-Type, with the same formats as 'read'. HTTP error or
+-- unknown media type ⇒ Left. The response may carry named graphs (TriG,
+-- N-Quads), so the output is NOT 'Graphless'.
+--
+-- Law (blank-node scope): each response is its own blank-node scope, like one file.
+fetchIri :: Iri -> HttpOpts -> Maybe FetchGraphFrom -> IO (Either Error QuadStream)
+
+data FetchOpts = FetchOpts
+  { fetchGraphFrom :: Maybe FetchGraphFrom
+  , fetchHttp      :: HttpOpts
+  , fetchOnError   :: Maybe (Iri -> Error -> IO ())
+  }
+
+-- | 'fetchIri' per IRI, in input order; per-IRI failures go to 'fetchOnError',
+-- the rest continue. The twin of 'readFromPaths'.
+fetchIris :: IriStream -> FetchOpts -> QuadStream
+
+-- | SELECT on a remote endpoint; rows stream as they are parsed (SPARQL JSON
+-- or XML results). A query that is not a SELECT ⇒ Left, and no request is sent.
+endpointSelect :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error BindingsStream)
+
+-- | CONSTRUCT or DESCRIBE on a remote endpoint. The protocol returns triples,
+-- so the output is graphless by type, as for local 'construct'. Any other
+-- query form ⇒ Left, and no request is sent. To name the output graph, pipe
+-- @rdf map -g '<iri>'@.
+--
+-- Law (blank-node scope): each response is its own blank-node scope.
+endpointConstruct :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error (Graphless QuadStream))
 
 --------------------------------------------------------------------------------
 -- Transforms  (src/transforms) — dataset → dataset unless noted
@@ -521,6 +569,9 @@ readLines      :: Stream Byte -> Stream Line     -- ^ trimmed, non-empty lines.
 data Cmd (i :: StreamKind) (o :: StreamKind) where
   Read         :: Cmd 'RDF        'NQuads             -- ^ or file args → NQuads (bytes-in variant). @--format@ forces the format.
   FromPaths    :: Cmd 'PathLines  'NQuads             -- ^ @--format@ as 'Read'.
+  Fetch        :: Cmd 'IriLines   'NQuads             -- ^ 'fetchIris'; exit 1 when any IRI failed.
+  EndpointSelect    :: Iri -> Query -> Cmd 'Nil 'JSONLinesBindings  -- ^ 'endpointSelect'.
+  EndpointConstruct :: Iri -> Query -> Cmd 'Nil 'NQuads             -- ^ 'endpointConstruct'.
   Filter       :: Expr -> Cmd 'NQuads 'NQuads         -- ^ 'filterQuads'.
   Map          :: Expr -> Rewrite -> Cmd 'NQuads 'NQuads  -- ^ 'mapQuads'; exit 1 on any 'MapError'.
   Select       :: Query -> Cmd 'NQuads 'JSONLinesBindings
@@ -546,7 +597,9 @@ type family Carrier (k :: StreamKind) :: Type where
   Carrier 'NQuads            = QuadStream
   Carrier 'JSONLinesBindings = BindingsStream
   Carrier 'PathLines         = PathStream
+  Carrier 'IriLines          = IriStream
   Carrier 'Text              = Stream Line
+  Carrier 'Nil               = ()
 
 -- | A pipeline is a path of commands whose wire kinds line up end to end —
 -- the free category over the 'Cmd' quiver. Associativity and identity of
@@ -699,6 +752,10 @@ streamFileQuads = manifestOnly
 readFromPaths = manifestOnly
 readFromGlob = manifestOnly
 readFromStdin = manifestOnly
+fetchIri = manifestOnly
+fetchIris = manifestOnly
+endpointSelect = manifestOnly
+endpointConstruct = manifestOnly
 
 fromGraphless = manifestOnly
 dropGraph = manifestOnly
