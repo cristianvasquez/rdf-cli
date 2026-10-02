@@ -22,6 +22,17 @@
 --
 -- Graph policy, in one line: a 'Quad' always carries a graph term; 'DefaultGraph'
 -- means "graphless", and nothing turns graphless into named implicitly.
+--
+-- Sections, top-down:
+--
+--   1. Commands       the CLI verbs as a typed stream algebra ('Cmd'), and how they compose
+--   2. Sources        read, from-paths, fetch, endpoint-select, endpoint-construct
+--   3. Transforms     filter, map, select, construct, ask, claim, validate, skolem,
+--                     canonicalize, dispatch
+--   4. Sinks          pretty, table
+--   5. Library        the 'Op' layer with provenance; the public surface
+--   6. Foundations    RDF core, stream carriers, formats, utils (vocabulary used above)
+--   7. Compile-only stubs
 
 module RdfCli.Manifest where
 
@@ -31,68 +42,12 @@ import Control.Monad.Trans.State (StateT)
 import Data.Kind (Type)
 
 --------------------------------------------------------------------------------
--- RDF core (the RDF/JS data model, as provided by rdf-ext)
+-- 1. Commands: the CLI as a typed stream algebra
+--
+-- Each verb is indexed by the stream kind it consumes and the kind it produces.
+-- Composition typechecks only when adjacent wire kinds agree — that is the whole
+-- point of the "N-Quads between transforms" rule.
 --------------------------------------------------------------------------------
-
-type Iri      = String
-type Lexical  = String
-type LangTag  = String
-type Datatype = Iri
-
-data Term
-  = NamedNode    Iri
-  | BlankNode    String
-  | Literal      Lexical (Maybe LangTag) Datatype
-  | DefaultGraph                            -- ^ the "no graph" graph term
-
--- | Positional roles are not enforced at the type level here, but the intent is:
--- subject ∈ {NamedNode, BlankNode}, predicate ∈ {NamedNode},
--- object ∈ {NamedNode, BlankNode, Literal}, graph ∈ {NamedNode, BlankNode, DefaultGraph}.
--- RDF/JS represents all positions with the same 'Term' shape; this manifest keeps
--- that shape rather than introducing separate graph/subject/object term wrappers.
--- Language-tagged literals follow RDF/JS: their datatype is rdf:langString; literals
--- without a language tag carry their explicit datatype.
-data Quad = Quad
-  { subject   :: Term
-  , predicate :: Term
-  , object    :: Term
-  , graph     :: Term
-  }
-
-data Dataset     -- ^ @rdf.dataset()@: an in-memory, de-duplicated set of quads.
-data Store       -- ^ oxigraph in-memory triplestore (opaque; the SPARQL engine).
-
-type Error = String
--- Error policy: this manifest mirrors the current JS surfaces instead of
--- normalizing them away. 'Either Error a' marks explicit throw-like paths,
--- callback fields mark recoverable per-item errors, and noted @process.exit@
--- paths are terminal CLI effects. A future JS cleanup may collapse these into
--- one ExceptT-style layer; the current contract stays precise about reality.
-
---------------------------------------------------------------------------------
--- Stream carriers (what actually flows over a Unix pipe)
---------------------------------------------------------------------------------
-
-data Stream a    -- ^ async, single-pass sequence.
-
-type QuadStream     = Stream Quad       -- ^ the "dataset stream"; wire encoding = N-Quads.
-type BindingsStream = Stream Row        -- ^ SPARQL SELECT results.
-type PathStream     = Stream FilePath   -- ^ one path per line.
-type IriStream      = Stream Iri        -- ^ one IRI per line.
-type Row            = [(Var, Term)]     -- ^ one SELECT solution.
-type Var            = String
-type Line           = String
-type Byte           = Int
-
--- | Logical stream shapes, borrowed as vocabulary from stream types. These are
--- not the CLI wire kinds below: they describe richer structure inside one
--- dataset-producing operation.
-data StreamShape a
-  = One a
-  | Empty
-  | Seq (StreamShape a) (StreamShape a)  -- ^ @s · t@: first @s@, then @t@.
-  | Par (StreamShape a) (StreamShape a)  -- ^ @s ‖ t@: independent logical channels.
-  | Many (StreamShape a)                 -- ^ @s*@.
 
 -- | The closed set of stream kinds the CLI tags each command with (the @io@
 -- metadata in every command module, surfaced by @scripts/manifest.js@).
@@ -105,25 +60,75 @@ data StreamKind
   | IriLines            -- ^ one IRI per line (fetch's stdin).
   | Nil                 -- ^ stdin is not read: the command is a pipeline origin.
 
+
+-- Slim rule: a verb exists only when no other verb expresses it. Removed:
+--   graph-assign <iri>  = map --where '!bound(?g)' -g '<iri>'
+--   graph-drop          = map -g default
+--   table --format jsonl = identity on select's output
+-- Not covered by a per-quad expression, so kept: skolem (one IRI per blank
+-- node across the run), from-paths (a different input kind).
+data Cmd (i :: StreamKind) (o :: StreamKind) where
+  Read         :: Cmd 'RDF        'NQuads             -- ^ or file args → NQuads (bytes-in variant). @--format@ forces the format.
+  FromPaths    :: Cmd 'PathLines  'NQuads             -- ^ @--format@ as 'Read'.
+  Fetch        :: Cmd 'IriLines   'NQuads             -- ^ 'fetchIris'; exit 1 when any IRI failed.
+  EndpointSelect    :: Iri -> Query -> Cmd 'Nil 'JSONLinesBindings  -- ^ 'endpointSelect'.
+  EndpointConstruct :: Iri -> Query -> Cmd 'Nil 'NQuads             -- ^ 'endpointConstruct'.
+  Filter       :: Expr -> Cmd 'NQuads 'NQuads         -- ^ 'filterQuads'.
+  Map          :: Expr -> Rewrite -> Cmd 'NQuads 'NQuads  -- ^ 'mapQuads'; exit 1 on any 'MapError'.
+  Select       :: Query -> Cmd 'NQuads 'JSONLinesBindings
+  Construct    :: Query -> Cmd 'NQuads 'NQuads
+  Ask          :: Query -> Cmd 'NQuads 'Text          -- ^ prints true|false; exit 1 on false.
+  Claim        :: FilePath -> Cmd 'NQuads 'NQuads     -- ^ one claimer per process; pipe several to cascade.
+  Validate     :: Cmd 'NQuads 'NQuads                 -- ^ exit code 1 on non-conformance.
+  Skolem       :: Cmd 'NQuads 'NQuads
+  Canonicalize :: Cmd 'NQuads 'NQuads                 -- ^ 'canonicalize'.
+  Dispatch     :: Iri -> Cmd 'NQuads 'NQuads          -- ^ 'dispatch'; file writes are a side effect.
+  Pretty       :: Cmd 'NQuads 'RDF                    -- ^ emits re-readable serialized RDF; unknown format ⇒ exit 1.
+  Table        :: Cmd 'JSONLinesBindings 'Text
+
+-- Law (Pretty/Read): a section–retraction pair UP TO blank-node relabeling —
+-- read ∘ pretty yields an isomorphic dataset, not an equal one (parsers mint
+-- fresh bnode labels; equality holds for skolemized data). The converse never
+-- holds: pretty ∘ read normalizes formatting.
+
+-- | Denotation of wire kinds: what carries each kind in-process. (The object
+-- mapping of the 'foldPipeline' functor.)
+type family Carrier (k :: StreamKind) :: Type where
+  Carrier 'RDF               = Stream Byte
+  Carrier 'NQuads            = QuadStream
+  Carrier 'JSONLinesBindings = BindingsStream
+  Carrier 'PathLines         = PathStream
+  Carrier 'IriLines          = IriStream
+  Carrier 'Text              = Stream Line
+  Carrier 'Nil               = ()
+
+-- | A pipeline is a path of commands whose wire kinds line up end to end —
+-- the free category over the 'Cmd' quiver. Associativity and identity of
+-- '(>>>)' hold by the free construction; no law comments needed.
+data Pipeline (i :: StreamKind) (o :: StreamKind) where
+  Done :: Pipeline i i                              -- ^ identity.
+  (:>) :: Cmd i m -> Pipeline m o -> Pipeline i o
+infixr 5 :>
+
+-- | Append whole pipelines: reusable fragments (a standard ingest prefix, a
+-- standard validation suffix) compose instead of being re-spelled.
+(>>>) :: Pipeline i m -> Pipeline m o -> Pipeline i o
+
+-- | The interpreter is the free category's universal property: give each
+-- 'Cmd' a meaning in ANY target category k and the pipeline's meaning
+-- follows. k = Kleisli IO runs it; k = Kleisli OpM (the 'Op' arrow below)
+-- records provenance while running — making "the Cmd algebra is the CLI
+-- projection of the library layer" a functor rather than a comment.
+foldPipeline
+  :: Category k
+  => (forall a b. Cmd a b -> k (Carrier a) (Carrier b))
+  -> Pipeline i o -> k (Carrier i) (Carrier o)
+
+-- Well-typed:   Read :> Select q :> Table :> Done    :: Pipeline 'RDF 'Text
+-- Ill-typed:    Read :> Table :> Done   -- NQuads ≠ JSONLinesBindings, rejected.
+
 --------------------------------------------------------------------------------
--- Formats  (src/formats.js)
---------------------------------------------------------------------------------
-
-type MimeType = String
-type Token    = String   -- ^ a user-facing format token, e.g. "ttl", "nq", "trig".
-type Sample   = String   -- ^ leading bytes of an input, decoded as text.
-
-nquads, ntriples, turtle, trig :: MimeType
-
--- | Token (case-insensitive) → MIME type; unknown tokens pass through unchanged.
-resolveFormat :: Maybe Token -> Maybe MimeType
--- | By file extension.
-guessMimeType :: FilePath -> Maybe MimeType
--- | Content sniffing over the first ~500 bytes (Turtle/JSON-LD/RDF-XML/TriG/N-Quads/N-Triples).
-detectFormat  :: Sample -> Maybe MimeType
-
---------------------------------------------------------------------------------
--- Sources  (src/sources)
+-- 2. Sources  (src/sources)
 --------------------------------------------------------------------------------
 
 data GraphFrom = Path       -- ^ the only accepted @--graph-from@ value.
@@ -204,7 +209,7 @@ endpointSelect :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error Bi
 endpointConstruct :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error (Graphless QuadStream))
 
 --------------------------------------------------------------------------------
--- Transforms  (src/transforms) — dataset → dataset unless noted
+-- 3. Transforms  (src/transforms) — dataset → dataset unless noted
 --------------------------------------------------------------------------------
 
 type Pipe a b = Stream a -> Stream b
@@ -265,31 +270,6 @@ mapQuad :: Expr -> Rewrite -> Quad -> Either MapError Quad
 --   graph-assign iri = mapQuads "!bound(?g)" (Rewrite Nothing Nothing Nothing (Just (ToGraph "<iri>")))
 --   graph-drop       = mapQuads "true"       (Rewrite Nothing Nothing Nothing (Just ToDefault))
 mapQuads :: Expr -> Rewrite -> (MapError -> IO ()) {- onMapError -} -> QuadPipe
-
--- | RDFC-1.0 canonical form: canonical blank-node labels, sorted N-Quads.
--- Materializes the whole stream.
---
--- Laws: canonicalize ∘ canonicalize = canonicalize; isomorphic inputs give
--- equal outputs.
-canonicalize :: QuadStream -> IO QuadStream
-
--- | Write each named graph whose IRI starts with the root to a file: the path
--- is the IRI relative to the root, under the destination directory; the
--- format comes from the file extension. Graph terms are dropped in the file.
--- Written quads leave the stream; all other quads pass on.
---
--- Errors (per graph, reported, the rest continue, exit 1): unknown extension;
--- file exists and 'overwrite' is False; path empty or with a '..' segment.
--- A graph that is not written stays in the stream: no quad is lost.
---
--- Law (round trip, up to blank-node relabeling): for files under the
--- destination, @dispatch root@ writes back what @read --graph-from path@ read,
--- when root is the file:// IRI of the destination.
-data DispatchOpts = DispatchOpts
-  { destination :: FilePath   -- ^ default ".".
-  , overwrite   :: Bool       -- ^ default False.
-  }
-dispatch :: Iri -> DispatchOpts -> QuadStream -> IO QuadStream
 
 -- SPARQL: materialization is its own step, so one Store feeds many query ops
 -- instead of each op re-draining the source. Store-level ops are pure over the
@@ -480,7 +460,7 @@ applyClaimer :: SomeClaimer -> QuadStream -> IO ClaimerResult
 
 -- Serializes the channels: pass-through unchanged, claimed → source graph,
 -- frontier copies → frontier graph, each view → its own graph, rest stays
--- graphless. The CLI verb is 'Claim' in the Cmd algebra below.
+-- graphless. The CLI verb is 'Claim' in the Cmd algebra (section 1).
 emitClaimer :: ClaimerResult -> QuadStream
 
 -- SHACL validation.
@@ -521,8 +501,33 @@ type Text = String
 
 formatMarkdownReport :: Summary -> String {- label -} -> Text
 
+-- | RDFC-1.0 canonical form: canonical blank-node labels, sorted N-Quads.
+-- Materializes the whole stream.
+--
+-- Laws: canonicalize ∘ canonicalize = canonicalize; isomorphic inputs give
+-- equal outputs.
+canonicalize :: QuadStream -> IO QuadStream
+
+-- | Write each named graph whose IRI starts with the root to a file: the path
+-- is the IRI relative to the root, under the destination directory; the
+-- format comes from the file extension. Graph terms are dropped in the file.
+-- Written quads leave the stream; all other quads pass on.
+--
+-- Errors (per graph, reported, the rest continue, exit 1): unknown extension;
+-- file exists and 'overwrite' is False; path empty or with a '..' segment.
+-- A graph that is not written stays in the stream: no quad is lost.
+--
+-- Law (round trip, up to blank-node relabeling): for files under the
+-- destination, @dispatch root@ writes back what @read --graph-from path@ read,
+-- when root is the file:// IRI of the destination.
+data DispatchOpts = DispatchOpts
+  { destination :: FilePath   -- ^ default ".".
+  , overwrite   :: Bool       -- ^ default False.
+  }
+dispatch :: Iri -> DispatchOpts -> QuadStream -> IO QuadStream
+
 --------------------------------------------------------------------------------
--- Sinks  (src/sinks) — terminal effects: bytes/text to stdout
+-- 4. Sinks  (src/sinks) — terminal effects: bytes/text to stdout
 --------------------------------------------------------------------------------
 
 data TableFormat = CSV | TSV   -- ^ no JSONL: 'select' already emits it.
@@ -550,88 +555,7 @@ type Prefixes = [(Prefix, Iri)]
 type Prefix   = String
 
 --------------------------------------------------------------------------------
--- Utils  (src/utils.js)
---------------------------------------------------------------------------------
-
-collectDataset :: QuadStream -> IO Dataset
-readLines      :: Stream Byte -> Stream Line     -- ^ trimmed, non-empty lines.
-
---------------------------------------------------------------------------------
--- The CLI as a typed stream algebra
---
--- Each verb is indexed by the stream kind it consumes and the kind it produces.
--- Composition typechecks only when adjacent wire kinds agree — that is the whole
--- point of the "N-Quads between transforms" rule.
---------------------------------------------------------------------------------
-
--- Slim rule: a verb exists only when no other verb expresses it. Removed:
---   graph-assign <iri>  = map --where '!bound(?g)' -g '<iri>'
---   graph-drop          = map -g default
---   table --format jsonl = identity on select's output
--- Not covered by a per-quad expression, so kept: skolem (one IRI per blank
--- node across the run), from-paths (a different input kind).
-data Cmd (i :: StreamKind) (o :: StreamKind) where
-  Read         :: Cmd 'RDF        'NQuads             -- ^ or file args → NQuads (bytes-in variant). @--format@ forces the format.
-  FromPaths    :: Cmd 'PathLines  'NQuads             -- ^ @--format@ as 'Read'.
-  Fetch        :: Cmd 'IriLines   'NQuads             -- ^ 'fetchIris'; exit 1 when any IRI failed.
-  EndpointSelect    :: Iri -> Query -> Cmd 'Nil 'JSONLinesBindings  -- ^ 'endpointSelect'.
-  EndpointConstruct :: Iri -> Query -> Cmd 'Nil 'NQuads             -- ^ 'endpointConstruct'.
-  Filter       :: Expr -> Cmd 'NQuads 'NQuads         -- ^ 'filterQuads'.
-  Map          :: Expr -> Rewrite -> Cmd 'NQuads 'NQuads  -- ^ 'mapQuads'; exit 1 on any 'MapError'.
-  Select       :: Query -> Cmd 'NQuads 'JSONLinesBindings
-  Construct    :: Query -> Cmd 'NQuads 'NQuads
-  Ask          :: Query -> Cmd 'NQuads 'Text          -- ^ prints true|false; exit 1 on false.
-  Claim        :: FilePath -> Cmd 'NQuads 'NQuads     -- ^ one claimer per process; pipe several to cascade.
-  Validate     :: Cmd 'NQuads 'NQuads                 -- ^ exit code 1 on non-conformance.
-  Skolem       :: Cmd 'NQuads 'NQuads
-  Canonicalize :: Cmd 'NQuads 'NQuads                 -- ^ 'canonicalize'.
-  Dispatch     :: Iri -> Cmd 'NQuads 'NQuads          -- ^ 'dispatch'; file writes are a side effect.
-  Pretty       :: Cmd 'NQuads 'RDF                    -- ^ emits re-readable serialized RDF; unknown format ⇒ exit 1.
-  Table        :: Cmd 'JSONLinesBindings 'Text
-
--- Law (Pretty/Read): a section–retraction pair UP TO blank-node relabeling —
--- read ∘ pretty yields an isomorphic dataset, not an equal one (parsers mint
--- fresh bnode labels; equality holds for skolemized data). The converse never
--- holds: pretty ∘ read normalizes formatting.
-
--- | Denotation of wire kinds: what carries each kind in-process. (The object
--- mapping of the 'foldPipeline' functor.)
-type family Carrier (k :: StreamKind) :: Type where
-  Carrier 'RDF               = Stream Byte
-  Carrier 'NQuads            = QuadStream
-  Carrier 'JSONLinesBindings = BindingsStream
-  Carrier 'PathLines         = PathStream
-  Carrier 'IriLines          = IriStream
-  Carrier 'Text              = Stream Line
-  Carrier 'Nil               = ()
-
--- | A pipeline is a path of commands whose wire kinds line up end to end —
--- the free category over the 'Cmd' quiver. Associativity and identity of
--- '(>>>)' hold by the free construction; no law comments needed.
-data Pipeline (i :: StreamKind) (o :: StreamKind) where
-  Done :: Pipeline i i                              -- ^ identity.
-  (:>) :: Cmd i m -> Pipeline m o -> Pipeline i o
-infixr 5 :>
-
--- | Append whole pipelines: reusable fragments (a standard ingest prefix, a
--- standard validation suffix) compose instead of being re-spelled.
-(>>>) :: Pipeline i m -> Pipeline m o -> Pipeline i o
-
--- | The interpreter is the free category's universal property: give each
--- 'Cmd' a meaning in ANY target category k and the pipeline's meaning
--- follows. k = Kleisli IO runs it; k = Kleisli OpM (the 'Op' arrow below)
--- records provenance while running — making "the Cmd algebra is the CLI
--- projection of the library layer" a functor rather than a comment.
-foldPipeline
-  :: Category k
-  => (forall a b. Cmd a b -> k (Carrier a) (Carrier b))
-  -> Pipeline i o -> k (Carrier i) (Carrier o)
-
--- Well-typed:   Read :> Select q :> Table :> Done    :: Pipeline 'RDF 'Text
--- Ill-typed:    Read :> Table :> Done   -- NQuads ≠ JSONLinesBindings, rejected.
-
---------------------------------------------------------------------------------
--- Operations & provenance  (proposed — the composable, lineage-tracking layer)
+-- 5. Library: operations & provenance  (proposed — the composable, lineage-tracking layer)
 --
 -- The 'Cmd' algebra above is the user-facing CLI projection (one verb per
 -- process). The library composes in a single process, and every component
@@ -724,7 +648,7 @@ data Abort = Abort OpId String   -- ^ thrown in IO: which op aborted, and why.
 provenanceToDataset :: Lineage -> Dataset
 
 --------------------------------------------------------------------------------
--- Public library surface  (src/index.js)
+-- 5. Library: public surface  (src/index.js)
 --
 --   import { sources, transforms, sinks, pipeline } from 'rdf-cli'
 --
@@ -733,7 +657,102 @@ provenanceToDataset :: Lineage -> Dataset
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
--- Compile-only stubs
+-- 6. Foundations
+--
+-- The vocabulary the sections above use: the RDF data model, stream carriers,
+-- format resolution and small utils. Read on demand.
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- RDF core (the RDF/JS data model, as provided by rdf-ext)
+--------------------------------------------------------------------------------
+
+type Iri      = String
+type Lexical  = String
+type LangTag  = String
+type Datatype = Iri
+
+data Term
+  = NamedNode    Iri
+  | BlankNode    String
+  | Literal      Lexical (Maybe LangTag) Datatype
+  | DefaultGraph                            -- ^ the "no graph" graph term
+
+-- | Positional roles are not enforced at the type level here, but the intent is:
+-- subject ∈ {NamedNode, BlankNode}, predicate ∈ {NamedNode},
+-- object ∈ {NamedNode, BlankNode, Literal}, graph ∈ {NamedNode, BlankNode, DefaultGraph}.
+-- RDF/JS represents all positions with the same 'Term' shape; this manifest keeps
+-- that shape rather than introducing separate graph/subject/object term wrappers.
+-- Language-tagged literals follow RDF/JS: their datatype is rdf:langString; literals
+-- without a language tag carry their explicit datatype.
+data Quad = Quad
+  { subject   :: Term
+  , predicate :: Term
+  , object    :: Term
+  , graph     :: Term
+  }
+
+data Dataset     -- ^ @rdf.dataset()@: an in-memory, de-duplicated set of quads.
+data Store       -- ^ oxigraph in-memory triplestore (opaque; the SPARQL engine).
+
+type Error = String
+-- Error policy: this manifest mirrors the current JS surfaces instead of
+-- normalizing them away. 'Either Error a' marks explicit throw-like paths,
+-- callback fields mark recoverable per-item errors, and noted @process.exit@
+-- paths are terminal CLI effects. A future JS cleanup may collapse these into
+-- one ExceptT-style layer; the current contract stays precise about reality.
+
+--------------------------------------------------------------------------------
+-- Stream carriers (what actually flows over a Unix pipe)
+--------------------------------------------------------------------------------
+
+data Stream a    -- ^ async, single-pass sequence.
+
+type QuadStream     = Stream Quad       -- ^ the "dataset stream"; wire encoding = N-Quads.
+type BindingsStream = Stream Row        -- ^ SPARQL SELECT results.
+type PathStream     = Stream FilePath   -- ^ one path per line.
+type IriStream      = Stream Iri        -- ^ one IRI per line.
+type Row            = [(Var, Term)]     -- ^ one SELECT solution.
+type Var            = String
+type Line           = String
+type Byte           = Int
+
+-- | Logical stream shapes, borrowed as vocabulary from stream types. These are
+-- not the CLI wire kinds ('StreamKind', section 1): they describe richer structure inside one
+-- dataset-producing operation.
+data StreamShape a
+  = One a
+  | Empty
+  | Seq (StreamShape a) (StreamShape a)  -- ^ @s · t@: first @s@, then @t@.
+  | Par (StreamShape a) (StreamShape a)  -- ^ @s ‖ t@: independent logical channels.
+  | Many (StreamShape a)                 -- ^ @s*@.
+
+--------------------------------------------------------------------------------
+-- Formats  (src/formats.js)
+--------------------------------------------------------------------------------
+
+type MimeType = String
+type Token    = String   -- ^ a user-facing format token, e.g. "ttl", "nq", "trig".
+type Sample   = String   -- ^ leading bytes of an input, decoded as text.
+
+nquads, ntriples, turtle, trig :: MimeType
+
+-- | Token (case-insensitive) → MIME type; unknown tokens pass through unchanged.
+resolveFormat :: Maybe Token -> Maybe MimeType
+-- | By file extension.
+guessMimeType :: FilePath -> Maybe MimeType
+-- | Content sniffing over the first ~500 bytes (Turtle/JSON-LD/RDF-XML/TriG/N-Quads/N-Triples).
+detectFormat  :: Sample -> Maybe MimeType
+
+--------------------------------------------------------------------------------
+-- Utils  (src/utils.js)
+--------------------------------------------------------------------------------
+
+collectDataset :: QuadStream -> IO Dataset
+readLines      :: Stream Byte -> Stream Line     -- ^ trimmed, non-empty lines.
+
+--------------------------------------------------------------------------------
+-- 7. Compile-only stubs
 --
 -- The manifest is signature-level, but keeping it as a valid Haskell module lets
 -- lint catch drift. These bindings are deliberately collected here so the algebra
