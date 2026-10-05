@@ -2,7 +2,7 @@ import { glob } from 'glob'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import rdf from 'rdf-ext'
-import { streamFileQuads } from '../sources/paths.js'
+import { scopeBlankNodes, streamFileQuads } from '../sources/paths.js'
 import { createValidator } from './shaclFixes.js'
 import { storeToDataset } from './sparql.js'
 
@@ -22,11 +22,15 @@ async function loadShapesDataset (patterns) {
   if (files.length === 0)
     throw new Error(`no shapes files matched: ${patterns.join(', ')}`)
 
+  // One blank-node scope per file: the parser can give the same label to
+  // different blank nodes of two files.
   const shapes = rdf.dataset()
-  for (const file of files) {
+  for (const [index, file] of files.entries()) {
+    const scope = scopeBlankNodes(index)
     try {
       for await (const quad of streamFileQuads(file)) {
-        shapes.add(rdf.quad(quad.subject, quad.predicate, quad.object))
+        const scoped = scope(quad)
+        shapes.add(rdf.quad(scoped.subject, scoped.predicate, scoped.object))
       }
     } catch (error) {
       throw new Error(`cannot load shapes ${file}: ${error}`)

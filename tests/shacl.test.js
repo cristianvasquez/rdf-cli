@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import test from 'node:test'
+import rdf from 'rdf-ext'
 import { validate } from '../src/transforms/shacl.js'
 import { materialize } from '../src/transforms/sparql.js'
 import { streamFileQuads } from '../src/sources/paths.js'
@@ -80,4 +84,22 @@ test('validate: sh:qualifiedValueShape in a shape reached via sh:node', async ()
     summary.violations.map((v) => [v.focusNode, v.sourceConstraint]),
     [['http://example.org/citizen-b', 'http://www.w3.org/ns/shacl#NodeConstraintComponent']],
   )
+})
+
+test('validate: blank nodes of two shapes files stay apart', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rdf-cli-shapes-'))
+  const shapes = (name, path) => {
+    const file = join(dir, `${name}.ttl`)
+    writeFileSync(file, `@prefix sh: <http://www.w3.org/ns/shacl#> .
+<urn:${name}> a sh:NodeShape ; sh:targetNode <urn:x> ; sh:property [ sh:path <${path}> ; sh:minCount 1 ] .
+`)
+    return file
+  }
+  const data = [rdf.quad(rdf.namedNode('urn:x'), rdf.namedNode('urn:a'), rdf.literal('1'))]
+  const store = await materialize(Readable.from(data, { objectMode: true }))
+
+  // Each file has one property shape: urn:a is present, urn:b is missing.
+  const { summary } = await validate(store, [shapes('one', 'urn:a'), shapes('two', 'urn:b')])
+  assert.equal(summary.conforms, false)
+  assert.equal(summary.violationCount, 1)
 })
