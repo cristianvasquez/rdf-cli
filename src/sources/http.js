@@ -73,20 +73,28 @@ export async function endpointSelect (endpoint, query, http) {
   const stream = await sparql.fetchBindings(endpoint, query)
   // head.vars can come after the results (JSON key order is free). Read and
   // buffer rows until the variables event, or the parser stalls on full buffers.
+  // With no head, the parsers emit [] at the end, after all rows are buffered.
   const buffered = []
   const variables = await new Promise((resolve, reject) => {
     const onData = (row) => buffered.push(row)
     const onError = (error) => done(() => reject(error))
-    const onEnd = () => done(() => reject(new Error('endpoint response has no head.vars')))
     const onVariables = (vars) => done(() => resolve(vars))
     function done (settle) {
       stream.pause()
-      stream.off('data', onData).off('error', onError).off('end', onEnd).off('variables', onVariables)
+      stream.off('data', onData).off('error', onError).off('variables', onVariables)
       settle()
     }
-    stream.on('data', onData).once('error', onError).once('end', onEnd).once('variables', onVariables)
+    stream.on('data', onData).once('error', onError).once('variables', onVariables)
   })
-  return { vars: variables.map((variable) => variable.value), rows: replay(buffered, stream) }
+  const vars = variables.map((variable) => variable.value)
+  for (const row of buffered) {
+    const extra = Object.keys(row).find((key) => !vars.includes(key))
+    if (extra !== undefined) {
+      stream.destroy()
+      throw new Error(`endpoint response binds ?${extra}, which is not in head.vars`)
+    }
+  }
+  return { vars, rows: replay(buffered, stream) }
 }
 
 async function * replay (buffered, stream) {

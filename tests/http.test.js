@@ -73,6 +73,9 @@ before(async () => {
         response.write(`${i ? ',' : ''}{"n":{"type":"literal","value":"${i}"}}`)
       }
       response.end(']},"head":{"vars":["n","unbound"]}}')
+    } else if (path === '/sparql-no-head') {
+      response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
+      response.end('{"results":{"bindings":[{"n":{"type":"literal","value":"0"}}]}}')
     } else if (path === '/sparql') {
       sparql(request, response)
     } else {
@@ -160,6 +163,11 @@ test('endpointSelect reads head.vars that come after the results', { timeout: 10
   const rows = await collect(bindings.rows)
   assert.equal(rows.length, HEAD_LAST_ROWS)
   assert.deepEqual([rows[0].n.value, rows.at(-1).n.value], ['0', String(HEAD_LAST_ROWS - 1)])
+})
+
+test('endpointSelect rejects a response whose rows bind variables not in head.vars', async () => {
+  await assert.rejects(endpointSelect(`${base}/sparql-no-head`, 'SELECT ?n WHERE { ?s ?p ?n }'),
+    /binds \?n, which is not in head\.vars/)
 })
 
 test('endpointSelect rejects a non-SELECT query before any request', async () => {
