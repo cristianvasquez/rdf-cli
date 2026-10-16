@@ -30,7 +30,7 @@ export const readStdin = operation('read', async () => ({
 }))
 
 // --- Materialization + SPARQL ---
-// materialize: Op QuadStream Store; select: Op Store BindingsStream;
+// materialize: Op QuadStream Store; select: Op Store Results;
 // construct: Op Store QuadStream
 export const materialize = operation('materialize', async (env) => {
   const store = await toStore(asReadable(env.value, 'materialize'))

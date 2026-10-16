@@ -70,11 +70,21 @@ function * constructQuads (store, query) {
   }
 }
 
-function * selectBindings (store, query) {
-  for (const binding of store.query(query)) {
-    const row = Object.fromEntries(binding)
-    for (const [key, value] of Object.entries(row)) row[key] = termInstance(value)
-    yield row
+function resultTerm (term) {
+  if (term.type === 'uri') return rdf.namedNode(term.value)
+  if (term.type === 'bnode') return rdf.blankNode(term.value)
+  if (term.type === 'literal' || term.type === 'typed-literal') {
+    return rdf.literal(term.value, term['xml:lang'] || (term.datatype && rdf.namedNode(term.datatype)))
+  }
+  if (term.type === 'triple') {
+    return rdf.quad(resultTerm(term.value.subject), resultTerm(term.value.predicate), resultTerm(term.value.object))
+  }
+  throw new Error(`unsupported SPARQL result term type: ${term.type}`)
+}
+
+function * selectBindings (bindings) {
+  for (const binding of bindings) {
+    yield Object.fromEntries(Object.entries(binding).map(([key, term]) => [key, resultTerm(term)]))
   }
 }
 
@@ -83,9 +93,10 @@ export function construct (store, query) {
   return Readable.from(constructQuads(store, query), { objectMode: true })
 }
 
-// SPARQL SELECT over a materialized store. Leaves RDF space, yields bindings rows.
+// Use the engine's result head, including for SELECT * and zero solutions.
 export function select (store, query) {
-  return selectBindings(store, query)
+  const result = JSON.parse(store.query(query, { results_format: 'application/sparql-results+json' }))
+  return { vars: result.head.vars, rows: selectBindings(result.results.bindings) }
 }
 
 // SPARQL ASK over a materialized store.

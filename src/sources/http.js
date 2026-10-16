@@ -1,6 +1,7 @@
 import formats from '@rdfjs/formats'
 import { SparqlEndpointFetcher } from 'fetch-sparql-endpoint'
 import { Readable } from 'node:stream'
+import { once } from 'node:events'
 import rdf from 'rdf-ext'
 import { parseQuads } from './parse.js'
 import { assignDefaultGraph, scopeBlankNodes } from './paths.js'
@@ -66,11 +67,14 @@ function checkForm (sparql, query, forms) {
   if (!forms.includes(form)) throw new Error(`expected a ${forms.join(' or ')} query, got ${form}`)
 }
 
-// SELECT on a remote endpoint: a stream of rows { var: term }.
+// SELECT on a remote endpoint: projection plus a stream of rows { var: term }.
 export async function endpointSelect (endpoint, query, http) {
   const sparql = fetcher(http)
   checkForm(sparql, query, ['SELECT'])
-  return sparql.fetchBindings(endpoint, query)
+  const rows = await sparql.fetchBindings(endpoint, query)
+  // fetch-sparql-endpoint forwards the parser's head.vars event before rows.
+  const [variables] = await once(rows, 'variables')
+  return { vars: variables.map((variable) => variable.value), rows }
 }
 
 // CONSTRUCT or DESCRIBE on a remote endpoint: graphless triples. Asks for

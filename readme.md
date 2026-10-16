@@ -27,7 +27,7 @@ flowchart TD
   NQ -- select --> B
   NQ -- ask --> T([text])
   NQ -- pretty --> RDF
-  B -- table --> T
+  B -- table --> RD([results document])
 ```
 <!-- /generated:diagram -->
 
@@ -37,11 +37,11 @@ flowchart TD
 | `read` | RDF bytes → N-Quads | Parse RDF files or stdin into N-Quads. |
 | `from-paths` | path lines → N-Quads | Parse the files named on stdin, one path per line, into N-Quads. |
 | `fetch` | IRI lines → N-Quads | Dereference the IRIs on stdin, one per line, into N-Quads. |
-| `endpoint-select` | nothing → JSONL bindings | Run a SPARQL SELECT on a remote endpoint and emit the bindings as JSON Lines. |
+| `endpoint-select` | nothing → JSONL bindings | Run a remote SPARQL SELECT and emit SPARQL JSON results as a head line followed by binding lines. |
 | `endpoint-construct` | nothing → N-Quads | Run a SPARQL CONSTRUCT or DESCRIBE on a remote endpoint and emit its triples, graphless. |
 | `filter` | N-Quads → N-Quads | Keep the quads where a SPARQL expression is true. |
 | `map` | N-Quads → N-Quads | Rewrite the quads that match --where with SPARQL expressions. |
-| `select` | N-Quads → JSONL bindings | Run a SPARQL SELECT and emit the bindings as JSON Lines. |
+| `select` | N-Quads → JSONL bindings | Run a SPARQL SELECT and emit SPARQL JSON results as a head line followed by binding lines. |
 | `construct` | N-Quads → N-Quads | Run a SPARQL CONSTRUCT and emit its triples, graphless. |
 | `ask` | N-Quads → text | Run a SPARQL ASK and print true or false; exit 1 on false. |
 | `claim` | N-Quads → N-Quads | Apply one claimer: claimed quads and views move into named graphs. |
@@ -50,14 +50,14 @@ flowchart TD
 | `canonicalize` | N-Quads → N-Quads | Emit the RDFC-1.0 canonical form. |
 | `dispatch` | N-Quads → N-Quads | Write each named graph under ROOT to a file; pass the other quads on. |
 | `pretty` | N-Quads → RDF bytes | Render as TriG (default), Turtle, N-Quads, or N-Triples; any other format is an error. |
-| `table` | JSONL bindings → text | Render bindings as CSV or TSV. |
+| `table` | JSONL bindings → results document | Serialize SPARQL results as CSV, TSV, or JSON. |
 <!-- /generated:table -->
 
 `rdf <command> --help` gives the arguments. [`spec/manifest.hs`](spec/manifest.hs) gives the contract: types, laws, library API.
 
 ## Rules
 
-- Between commands, data is N-Quads.
+- RDF data between commands is N-Quads. `select` and `endpoint-select` emit JSON Lines: first `{"head":{"vars":["s","missing","o"]}}` with variable names in SELECT projection order, then one binding object per line, for example `{"s":{"type":"uri","value":"urn:a"},"o":{"type":"uri","value":"urn:x"}}`. Binding values are SPARQL JSON terms (`uri`, `literal`, or `bnode`, with `value` and optional `xml:lang` or `datatype`); unbound keys are absent, not `null`. The head is emitted even with zero bindings. `table` uses `head.vars` for column order: CSV has plain values, TSV has RDF term syntax and `?`-prefixed headers, and JSON is a complete SPARQL results document. Absent bindings are empty CSV/TSV cells; zero rows still emits the header. JSON consumers must skip the first line to process bindings only.
 - Graphless quads stay graphless. Only `map -g` and `read --graph-from path` add graphs; `map -g default` removes them.
 - Each input file is its own blank-node scope. Labels do not change between commands.
 - In `filter` and `map`, an expression sees one quad: `?s ?p ?o ?g`. `?g` is unbound in the default graph.
@@ -125,7 +125,9 @@ rdf read tests/fixtures/person-valid.ttl | rdf claim tests/fixtures/person-claim
 import { sources, transforms } from 'rdf-cli'   // also: sinks, pipeline
 
 const store = await transforms.materialize(sources.readFromGlob(['./data/**/*.ttl']))
-for (const row of transforms.select(store, 'SELECT ?s ?o WHERE { ?s ?p ?o }')) console.log(row.s.value)
+const { vars, rows } = transforms.select(store, 'SELECT ?s ?o WHERE { ?s ?p ?o }')
+console.log(vars) // ['s', 'o'], including when there are no rows
+for await (const row of rows) console.log(row.s.value)
 ```
 
 `pipeline` composes operations and records their provenance as PROV-O. Signatures: [`spec/manifest.hs`](spec/manifest.hs).

@@ -108,7 +108,8 @@ test('select returns bindings as plain objects', async () => {
     'SELECT ?s ?o WHERE { ?s <http://example.org/knows> ?o }',
   )
 
-  const rows = await collect(bindings)
+  assert.deepEqual(bindings.vars, ['s', 'o'])
+  const rows = await collect(bindings.rows)
   assert.equal(rows.length, 2)
   assert.ok(rows.every((r) => 's' in r && 'o' in r))
   assert.ok(rows.some((r) => r.s.value === 'http://example.org/Alice'))
@@ -124,7 +125,8 @@ test('select returns empty iterable when query matches nothing', async () => {
     'SELECT ?s WHERE { ?s <http://example.org/likes> ?o }',
   )
 
-  const rows = await collect(bindings)
+  assert.deepEqual(bindings.vars, ['s'])
+  const rows = await collect(bindings.rows)
   assert.equal(rows.length, 0)
 })
 
@@ -138,7 +140,7 @@ test('select binding values are rdf-ext term instances', async () => {
     'SELECT ?name WHERE { <http://example.org/Alice> <http://example.org/name> ?name }',
   )
 
-  const rows = await collect(bindings)
+  const rows = await collect(bindings.rows)
   assert.equal(rows.length, 1)
   assert.equal(rows[0].name.termType, 'Literal')
   assert.equal(rows[0].name.value, 'Alice')

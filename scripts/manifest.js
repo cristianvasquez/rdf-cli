@@ -37,6 +37,7 @@ const MEDIA_TYPES = {
   text: ['text/plain'],
   pathLines: ['text/plain'],
   jsonLinesBindings: ['application/x-ndjson'],
+  resultsDocument: ['text/csv', 'text/tab-separated-values', 'application/sparql-results+json'],
 }
 
 async function* mediaTypeQuads () {
@@ -64,6 +65,13 @@ async function* streamTypeQuads () {
   yield rdf.quad(cli.NQuads, rdfs.comment, lit('Normalized internal RDF dataset stream encoded as N-Quads.'))
   yield rdf.quad(cli.NQuads, cli.supportsMediaType, mediaTypeIri(MEDIA_TYPES.nquads[0]))
 
+  yield rdf.quad(cli.ResultsDocument, rdfType, cli.StreamType)
+  yield rdf.quad(cli.ResultsDocument, rdfs.label, lit('ResultsDocument'))
+  yield rdf.quad(cli.ResultsDocument, rdfs.comment, lit('Serialized SPARQL results document.'))
+  for (const value of MEDIA_TYPES.resultsDocument) {
+    yield rdf.quad(cli.ResultsDocument, cli.supportsMediaType, mediaTypeIri(value))
+  }
+
   yield rdf.quad(cli.Text, rdfType, cli.StreamType)
   yield rdf.quad(cli.Text, rdfs.label, lit('Text'))
   yield rdf.quad(cli.Text, rdfs.comment, lit('Plain text stream.'))
@@ -79,7 +87,7 @@ async function* streamTypeQuads () {
   yield rdf.quad(
     cli.JSONLinesBindings,
     rdfs.comment,
-    lit('SPARQL SELECT bindings encoded as one JSON object per line.'),
+    lit('SPARQL JSON results: head.vars first, then one binding with typed terms per line.'),
   )
   yield rdf.quad(
     cli.JSONLinesBindings,

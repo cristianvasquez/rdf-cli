@@ -83,7 +83,7 @@ fi
 
 printf 'PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name }' > "$TMP/select.rq"
 out=$($CLI read "$DATA/bob-likes-alice.ttl" | $CLI select --query-file "$TMP/select.rq" 2>"$TMP/err")
-assert_contains "$out" '"name":"Bob"' "select: --query-file without positional query"
+assert_contains "$out" '"name":{"type":"literal","value":"Bob"' "select: --query-file without positional query"
 assert_empty "$(cat "$TMP/err")" "select: --query-file has no stderr"
 
 printf '\nconstruct\n'

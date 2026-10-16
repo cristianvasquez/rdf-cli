@@ -135,8 +135,10 @@ test('fetchIris reports a failed IRI and continues', async () => {
 // --- endpointSelect / endpointConstruct ---
 
 test('endpointSelect streams rows of terms', async () => {
-  const rows = await collect(await endpointSelect(`${base}/sparql`,
-    'SELECT ?name WHERE { ?s <http://example.org/name> ?name } ORDER BY ?name'))
+  const bindings = await endpointSelect(`${base}/sparql`,
+    'SELECT ?name WHERE { ?s <http://example.org/name> ?name } ORDER BY ?name')
+  assert.deepEqual(bindings.vars, ['name'])
+  const rows = await collect(bindings.rows)
   assert.deepEqual(rows.map((r) => r.name.value), ['Alice', 'Bob'])
   assert.equal(rows[0].name.termType, 'Literal')
 })
@@ -206,8 +208,52 @@ test('rdf endpoint-select emits JSON Lines', async () => {
   const { code, stdout } = await run(['endpoint-select', `${base}/sparql`,
     'SELECT ?name WHERE { ?s <http://example.org/name> ?name } ORDER BY ?name'])
   assert.equal(code, 0)
-  assert.deepEqual(stdout.trim().split('\n').map((l) => JSON.parse(l)), [{ name: 'Alice' }, { name: 'Bob' }])
+  assert.deepEqual(stdout.trim().split('\n').map((l) => JSON.parse(l)), [{ head: { vars: ['name'] } }, { name: { type: 'literal', value: 'Alice', datatype: 'http://www.w3.org/2001/XMLSchema#string' } }, { name: { type: 'literal', value: 'Bob', datatype: 'http://www.w3.org/2001/XMLSchema#string' } }])
 })
+
+for (const format of ['csv', 'tsv', 'json']) {
+  for (const scenario of [
+    {
+      name: 'all unbound',
+      query: 'SELECT ?name ?missing ?s WHERE { ?s <http://example.org/name> ?name OPTIONAL { ?s <urn:none> ?missing } } ORDER BY ?name',
+      cells: [['name', 'missing', 's'], ['Alice', '', 'http://example.org/alice'], ['Bob', '', 'http://example.org/bob']],
+    },
+    {
+      name: 'zero rows', query: 'SELECT ?s WHERE { ?s <urn:none> ?o }', cells: [['s']],
+    },
+    {
+      name: 'some unbound',
+      query: 'SELECT ?name ?missing ?s WHERE { ?s <http://example.org/name> ?name OPTIONAL { ?s <http://example.org/name> "Bob" BIND("bound" AS ?missing) } } ORDER BY ?name',
+      cells: [['name', 'missing', 's'], ['Alice', '', 'http://example.org/alice'], ['Bob', 'bound', 'http://example.org/bob']],
+    },
+    {
+      name: 'SELECT *', query: 'SELECT * WHERE { ?s ?p ?o } ORDER BY ?s',
+      cells: [['o', 'p', 's'], ['Alice', 'http://example.org/name', 'http://example.org/alice'], ['Bob', 'http://example.org/name', 'http://example.org/bob']],
+    },
+  ]) {
+    test(`rdf endpoint-select -> table ${format}: ${scenario.name}`, async () => {
+      const result = await run(['endpoint-select', `${base}/sparql`, scenario.query])
+      assert.equal(result.code, 0, result.stderr)
+      const records = result.stdout.trim().split('\n').map((line) => JSON.parse(line))
+      assert.deepEqual(records[0], { head: { vars: scenario.cells[0] } })
+      if (scenario.name === 'all unbound') assert.ok(records.slice(1).every((row) => !('missing' in row)))
+      if (scenario.name === 'some unbound') assert.ok(!('missing' in records[1]))
+      const table = await run(['table', '-f', format], result.stdout)
+      assert.equal(table.code, 0, table.stderr)
+      if (format === 'json') {
+        assert.deepEqual(JSON.parse(table.stdout), { head: records[0].head, results: { bindings: records.slice(1) } })
+      } else {
+        const cells = scenario.cells.map((row, index) => row.map((cell) => {
+          if (format === 'csv') return cell
+          if (index === 0) return `?${cell}`
+          if (!cell) return ''
+          return cell.startsWith('http:') ? `<${cell}>` : JSON.stringify(cell)
+        }))
+        assert.equal(table.stdout, cells.map((row) => row.join(format === 'csv' ? ',' : '\t') + '\n').join(''))
+      }
+    })
+  }
+}
 
 test('rdf endpoint-construct emits N-Quads; a wrong query form exits 1', async () => {
   const ok = await run(['endpoint-construct', `${base}/sparql`, 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }'])

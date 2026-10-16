@@ -18,7 +18,7 @@ export const Value = {
   empty: () => ({ type: 'empty' }),
   quads: (stream) => ({ type: 'quads', stream }),
   store: (store) => ({ type: 'store', store }),
-  bindings: (rows) => ({ type: 'bindings', rows }),
+  bindings: ({ vars, rows }) => ({ type: 'bindings', vars, rows }),
   text: (text) => ({ type: 'text', text }),
 }
 

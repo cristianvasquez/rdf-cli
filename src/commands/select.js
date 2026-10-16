@@ -10,7 +10,7 @@ export default defineCommand({
   meta: {
     name: 'select',
     description:
-      'Run a SPARQL SELECT and emit the bindings as JSON Lines.',
+      'Run a SPARQL SELECT and emit SPARQL JSON results as a head line followed by binding lines.',
   },
   args: queryArgs('SELECT'),
   async run ({ args }) {

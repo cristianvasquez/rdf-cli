@@ -1,74 +1,68 @@
+import rdf from 'rdf-ext'
 import { readLines } from '../utils.js'
+import { bindingToJSONL } from './bindings.js'
 
 function csvEscape (value) {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`
+  return /[,"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+function decodeTerm (term) {
+  if (term.type === 'uri') return rdf.namedNode(term.value)
+  if (term.type === 'bnode') return rdf.blankNode(term.value)
+  if (term.type === 'literal') return rdf.literal(term.value, term['xml:lang'] || (term.datatype && rdf.namedNode(term.datatype)))
+  throw new Error(`unsupported SPARQL result term type: ${term.type}`)
+}
+
+// Decode the wire at the command boundary; the sink consumes Results.
+export async function readResults (stream) {
+  const lines = readLines(stream)[Symbol.asyncIterator]()
+  const first = await lines.next()
+  const head = first.done ? null : JSON.parse(first.value).head
+  if (!Array.isArray(head?.vars) || !head.vars.every((v) => typeof v === 'string')) {
+    throw new Error('expected a head record with vars on the first line')
   }
-  return value
-}
-
-function formatCSVRow (row, headers) {
-  return `${headers.map((h) => csvEscape(String(row[h] ?? ''))).join(',')}\n`
-}
-
-function formatTSVRow (row, headers) {
-  return `${headers.map((h) => String(row[h] ?? '').replace(/\t/g, ' ')).join('\t')}\n`
-}
-
-// The JSON Lines stream does not carry the SELECT projection, and select omits
-// unbound variables. The header is therefore the union of the keys of all rows,
-// so all rows are buffered. Each row lists its keys in projection order; the
-// header is a topological order of those per-row sequences, ties broken by the
-// order of first appearance.
-function unionHeaders (rows) {
-  const seen = new Map()        // key -> first-appearance index
-  const after = new Map()       // key -> Set of keys that must come after it
-  const indegree = new Map()
-  for (const row of rows) {
-    const keys = Object.keys(row)
-    for (const k of keys) {
-      if (!seen.has(k)) {
-        seen.set(k, seen.size)
-        after.set(k, new Set())
-        indegree.set(k, 0)
-      }
-    }
-    for (let i = 1; i < keys.length; i++) {
-      const edges = after.get(keys[i - 1])
-      if (!edges.has(keys[i])) {
-        edges.add(keys[i])
-        indegree.set(keys[i], indegree.get(keys[i]) + 1)
-      }
+  async function * rows () {
+    for await (const line of { [Symbol.asyncIterator]: () => lines }) {
+      yield Object.fromEntries(Object.entries(JSON.parse(line)).map(([key, term]) => [key, decodeTerm(term)]))
     }
   }
-  const byFirstSeen = (a, b) => seen.get(a) - seen.get(b)
-  const ready = [...seen.keys()].filter((k) => indegree.get(k) === 0)
-  const headers = []
-  while (ready.length) {
-    ready.sort(byFirstSeen)
-    const k = ready.shift()
-    headers.push(k)
-    for (const next of after.get(k)) {
-      indegree.set(next, indegree.get(next) - 1)
-      if (indegree.get(next) === 0) ready.push(next)
-    }
-  }
-  // Inconsistent orders (a cycle) cannot come from one projection; keep the rest
-  // in first-appearance order instead of dropping them.
-  for (const k of [...seen.keys()].sort(byFirstSeen)) if (!headers.includes(k)) headers.push(k)
-  return headers
+  return { vars: head.vars, rows: rows() }
 }
 
-// csv | tsv. No jsonl: select already emits JSON Lines.
-export async function writeTable (stream, { format = 'csv', out = process.stdout } = {}) {
-  if (format !== 'csv' && format !== 'tsv') throw new Error(`unsupported table format: ${format}`)
-  const rows = []
-  for await (const line of readLines(stream)) rows.push(JSON.parse(line))
-  if (rows.length === 0) return
+function iri (value) {
+  return `<${value.replace(/[<>"{}|^`\\\u0000-\u0020]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}>`
+}
 
-  const headers = unionHeaders(rows)
-  out.write(format === 'tsv' ? `${headers.join('\t')}\n` : `${headers.join(',')}\n`)
-  for (const row of rows) {
-    out.write(format === 'tsv' ? formatTSVRow(row, headers) : formatCSVRow(row, headers))
+function tsvTerm (term) {
+  if (term.termType === 'NamedNode') return iri(term.value)
+  if (term.termType === 'BlankNode') return `_:${term.value}`
+  const lexical = JSON.stringify(term.value)
+  if (term.language) return `${lexical}@${term.language}`
+  if (term.datatype.value !== 'http://www.w3.org/2001/XMLSchema#string') return `${lexical}^^${iri(term.datatype.value)}`
+  return lexical
+}
+
+export async function writeTable ({ vars, rows }, { format = 'csv', out = process.stdout } = {}) {
+  if (!['csv', 'tsv', 'json'].includes(format)) throw new Error(`unsupported table format: ${format}`)
+  if (format === 'json') {
+    out.write(`${JSON.stringify({ head: { vars } }).slice(0, -1)},"results":{"bindings":[`)
+    let separator = ''
+    for await (const row of rows) {
+      out.write(separator + bindingToJSONL(row).trimEnd())
+      separator = ','
+    }
+    out.write(']}}\n')
+    return
+  }
+  const delimiter = format === 'csv' ? ',' : '\t'
+  out.write(`${vars.map((v) => format === 'csv' ? csvEscape(v) : `?${v}`).join(delimiter)}\n`)
+  for await (const row of rows) {
+    const cells = vars.map((v) => {
+      const term = Object.hasOwn(row, v) ? row[v] : null
+      if (!term) return ''
+      if (format === 'tsv') return tsvTerm(term)
+      return csvEscape(term.termType === 'BlankNode' ? `_:${term.value}` : term.value)
+    })
+    out.write(`${cells.join(delimiter)}\n`)
   }
 }

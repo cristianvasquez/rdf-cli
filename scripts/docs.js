@@ -15,6 +15,7 @@ const readmePath = join(import.meta.dirname, '..', 'readme.md')
 
 const KINDS = {
   RDF: 'RDF bytes',
+  ResultsDocument: 'results document',
   NQuads: 'N-Quads',
   JSONLinesBindings: 'JSONL bindings',
   PathLines: 'path lines',
@@ -22,7 +23,7 @@ const KINDS = {
   Nil: 'nothing',
   Text: 'text',
 }
-const NODE_IDS = { RDF: 'RDF', NQuads: 'NQ', JSONLinesBindings: 'B', PathLines: 'PL', Text: 'T', IriLines: 'IL', Nil: 'NIL' }
+const NODE_IDS = { ResultsDocument: 'RD', RDF: 'RDF', NQuads: 'NQ', JSONLinesBindings: 'B', PathLines: 'PL', Text: 'T', IriLines: 'IL', Nil: 'NIL' }
 const PER_LINE = 3
 
 const cmds = parseCmdAlgebra()

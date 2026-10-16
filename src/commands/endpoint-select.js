@@ -8,7 +8,7 @@ export default defineCommand({
   meta: {
     name: 'endpoint-select',
     description:
-      'Run a SPARQL SELECT on a remote endpoint and emit the bindings as JSON Lines. ' +
+      'Run a remote SPARQL SELECT and emit SPARQL JSON results as a head line followed by binding lines. ' +
       'Stdin is not read.',
   },
   args: {

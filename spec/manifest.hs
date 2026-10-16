@@ -54,7 +54,11 @@ import Data.Kind (Type)
 data StreamKind
   = RDF                 -- ^ serialized RDF /bytes/, any supported media type (read's stdin).
   | NQuads              -- ^ the normalized dataset stream on the wire.
-  | JSONLinesBindings   -- ^ select's output: one JSON object per line.
+  | JSONLinesBindings   -- ^ SELECT output: first {"head":{"vars":[...]}} in projection order,
+                        --   then one SPARQL 1.1 JSON binding per line: terms have type uri|literal|bnode,
+                        --   value, optional xml:lang/datatype; unbound keys are absent.
+                        --   The head is present even with zero solutions.
+  | ResultsDocument     -- ^ serialized SPARQL results document (CSV, TSV, JSON).
   | Text                -- ^ a sink's human/text output.
   | PathLines           -- ^ one file path per line (from-paths' stdin).
   | IriLines            -- ^ one IRI per line (fetch's stdin).
@@ -64,7 +68,6 @@ data StreamKind
 -- Slim rule: a verb exists only when no other verb expresses it. Removed:
 --   graph-assign <iri>  = map --where '!bound(?g)' -g '<iri>'
 --   graph-drop          = map -g default
---   table --format jsonl = identity on select's output
 -- Not covered by a per-quad expression, so kept: skolem (one IRI per blank
 -- node across the run), from-paths (a different input kind).
 data Cmd (i :: StreamKind) (o :: StreamKind) where
@@ -84,8 +87,10 @@ data Cmd (i :: StreamKind) (o :: StreamKind) where
   Canonicalize :: Cmd 'NQuads 'NQuads                 -- ^ 'canonicalize'.
   Dispatch     :: Iri -> Cmd 'NQuads 'NQuads          -- ^ 'dispatch'; file writes are a side effect.
   Pretty       :: Cmd 'NQuads 'RDF                    -- ^ emits re-readable serialized RDF; unknown format ⇒ exit 1.
-  Table        :: Cmd 'JSONLinesBindings 'Text
+  Table        :: Cmd 'JSONLinesBindings 'ResultsDocument
 
+-- Law (Table/JSON): table -f json emits a valid SPARQL JSON results document
+-- with the same vars and bindings as the wire.
 -- Law (Pretty/Read): a section–retraction pair UP TO blank-node relabeling —
 -- read ∘ pretty yields an isomorphic dataset, not an equal one (parsers mint
 -- fresh bnode labels; equality holds for skolemized data). The converse never
@@ -96,7 +101,8 @@ data Cmd (i :: StreamKind) (o :: StreamKind) where
 type family Carrier (k :: StreamKind) :: Type where
   Carrier 'RDF               = Stream Byte
   Carrier 'NQuads            = QuadStream
-  Carrier 'JSONLinesBindings = BindingsStream
+  Carrier 'JSONLinesBindings = Results
+  Carrier 'ResultsDocument   = Stream Byte
   Carrier 'PathLines         = PathStream
   Carrier 'IriLines          = IriStream
   Carrier 'Text              = Stream Line
@@ -194,7 +200,7 @@ fetchIris :: IriStream -> FetchOpts -> QuadStream
 
 -- | SELECT on a remote endpoint; rows stream as they are parsed (SPARQL JSON
 -- or XML results). A query that is not a SELECT ⇒ Left, and no request is sent.
-endpointSelect :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error BindingsStream)
+endpointSelect :: Iri {- endpoint -} -> Query -> HttpOpts -> IO (Either Error Results)
 
 -- | CONSTRUCT or DESCRIBE on a remote endpoint. The protocol returns triples,
 -- so the output is graphless by type, as for local 'construct'. Any other
@@ -275,7 +281,7 @@ mapQuads :: Expr -> Rewrite -> (MapError -> IO ()) {- onMapError -} -> QuadPipe
 -- instead of each op re-draining the source. Store-level ops are pure over the
 -- store (oxigraph queries run synchronously).
 materialize :: QuadStream -> IO Store           -- ^ drains the stream into a store.
-select      :: Store -> Query -> BindingsStream -- ^ leaves RDF space.
+select      :: Store -> Query -> Results -- ^ leaves RDF space.
 construct   :: Store -> Query -> QuadStream      -- ^ output graphless (engine can't emit graphs).
 ask         :: Store -> Query -> Bool
 
@@ -530,7 +536,7 @@ dispatch :: Iri -> DispatchOpts -> QuadStream -> IO QuadStream
 -- 4. Sinks  (src/sinks) — terminal effects: bytes/text to stdout
 --------------------------------------------------------------------------------
 
-data TableFormat = CSV | TSV   -- ^ no JSONL: 'select' already emits it.
+data TableFormat = CSV | TSV | JSON -- ^ W3C SPARQL 1.1 results formats.
 
 toReadable      :: Stream a -> Stream a          -- ^ idempotent coercion to a Readable.
 writeQuads      :: QuadStream -> MimeType -> IO ()          -- ^ default MimeType = nquads.
@@ -546,10 +552,10 @@ datasetToString :: Dataset -> MimeType -> Prefixes -> IO Text
 writePretty     :: QuadStream -> MimeType -> Prefixes -> Either Error (IO ())
 
 bindingToJSONL  :: Row -> Text
-writeBindings   :: BindingsStream -> IO ()
+writeBindings   :: Results -> IO ()
 
-writeTable      :: Stream Line -> TableFormat -> IO ()  -- ^ buffers all rows: header = union of row keys
-                                                    --   (select omits unbound vars; a var unbound in every row has no column).
+writeTable      :: Results -> TableFormat -> IO () -- ^ header = vars; zero rows = header only.
+                                                  -- JSON emits a complete results document.
 
 type Prefixes = [(Prefix, Iri)]
 type Prefix   = String
@@ -626,7 +632,7 @@ record :: OpKind -> (a -> IO (b, Meta)) -> Op a b
 -- twins live in src/pipeline/operations.js with the matching expectValue tag.
 readOp        :: [Pattern] -> Op () QuadStream
 materializeOp :: Op QuadStream Store
-selectOp      :: Query -> Op Store BindingsStream
+selectOp      :: Query -> Op Store Results
 constructOp   :: Query -> Op Store QuadStream
 
 -- | 'validate' lifts so its 'Summary' lands in the appended result's
@@ -709,7 +715,10 @@ type Error = String
 data Stream a    -- ^ async, single-pass sequence.
 
 type QuadStream     = Stream Quad       -- ^ the "dataset stream"; wire encoding = N-Quads.
-type BindingsStream = Stream Row        -- ^ SPARQL SELECT results.
+data Results = Results
+  { vars :: [Var]                       -- ^ SELECT projection, including for zero solutions.
+  , rows :: Stream Row                  -- ^ Bound RDF terms only; unbound keys are absent.
+  }
 type PathStream     = Stream FilePath   -- ^ one path per line.
 type IriStream      = Stream Iri        -- ^ one IRI per line.
 type Row            = [(Var, Term)]     -- ^ one SELECT solution.
