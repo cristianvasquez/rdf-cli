@@ -76,6 +76,10 @@ before(async () => {
     } else if (path === '/sparql-no-head') {
       response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
       response.end('{"results":{"bindings":[{"n":{"type":"literal","value":"0"}}]}}')
+    } else if (path === '/sparql-reset') {
+      response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
+      response.write('{"head":{"vars":["n"]},"results":{"bindings":[{"n":{"type":"literal","value":"0"}}')
+      setTimeout(() => response.socket.destroy(), 50)
     } else if (path === '/sparql-undeclared') {
       response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
       response.end('{"head":{"vars":["n"]},"results":{"bindings":[{"n":{"type":"literal","value":"0"}},{"x":{"type":"literal","value":"1"}}]}}')
@@ -174,6 +178,12 @@ test('endpointSelect rejects rows that bind variables not in head.vars, for any 
   await assert.rejects(collect(noHead.rows), /binds \?n, which is not in head\.vars/)
   const headFirst = await endpointSelect(`${base}/sparql-undeclared`, 'SELECT ?n WHERE { ?s ?p ?n }')
   await assert.rejects(collect(headFirst.rows), /binds \?x, which is not in head\.vars/)
+})
+
+test('endpointSelect gives a stream error to the reader, also when it occurs before reading starts', async () => {
+  const bindings = await endpointSelect(`${base}/sparql-reset`, 'SELECT ?n WHERE { ?s ?p ?n }')
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  await assert.rejects(collect(bindings.rows), /terminated/)
 })
 
 test('endpointSelect rejects a non-SELECT query before any request', async () => {

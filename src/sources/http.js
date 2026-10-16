@@ -87,13 +87,18 @@ export async function endpointSelect (endpoint, query, http) {
     stream.on('data', onData).once('error', onError).once('variables', onVariables)
   })
   const vars = variables.map((variable) => variable.value)
-  return { vars, rows: replay(vars, buffered, stream) }
+  // Until the caller reads rows, nothing else listens for 'error': record it
+  // here, so it does not stop the process, and throw it from replay.
+  const failure = {}
+  stream.on('error', (error) => { failure.error ??= error })
+  return { vars, rows: replay(vars, buffered, stream, failure) }
 }
 
 // Buffered rows first, then the rest. Every row may bind only head.vars.
-async function * replay (vars, buffered, stream) {
+async function * replay (vars, buffered, stream, failure) {
   try {
     for (const rows of [buffered, stream]) {
+      if (failure.error) throw failure.error
       for await (const row of rows) {
         const extra = Object.keys(row).find((key) => !vars.includes(key))
         if (extra !== undefined) throw new Error(`endpoint response binds ?${extra}, which is not in head.vars`)
