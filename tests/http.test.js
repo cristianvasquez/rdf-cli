@@ -19,6 +19,8 @@ store.load(`
 <http://example.org/bob> <http://example.org/name> "Bob" .
 `, { format: 'nt' })
 
+const HEAD_LAST_ROWS = 2000
+
 let server
 let base
 
@@ -62,6 +64,15 @@ before(async () => {
     } else if (path === '/sparql-quads') {
       response.writeHead(200, { 'content-type': 'application/n-quads' })
       response.end('<http://example.org/a> <http://example.org/p> "x" <http://example.org/g> .\n')
+    } else if (path === '/sparql-head-last') {
+      // Valid SPARQL JSON with "results" before "head", in many chunks, so
+      // the parser buffers fill before it reaches head.vars.
+      response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
+      response.write('{"results":{"bindings":[')
+      for (let i = 0; i < HEAD_LAST_ROWS; i++) {
+        response.write(`${i ? ',' : ''}{"n":{"type":"literal","value":"${i}"}}`)
+      }
+      response.end(']},"head":{"vars":["n","unbound"]}}')
     } else if (path === '/sparql') {
       sparql(request, response)
     } else {
@@ -141,6 +152,14 @@ test('endpointSelect streams rows of terms', async () => {
   const rows = await collect(bindings.rows)
   assert.deepEqual(rows.map((r) => r.name.value), ['Alice', 'Bob'])
   assert.equal(rows[0].name.termType, 'Literal')
+})
+
+test('endpointSelect reads head.vars that come after the results', { timeout: 10000 }, async () => {
+  const bindings = await endpointSelect(`${base}/sparql-head-last`, 'SELECT ?n ?unbound WHERE { ?s ?p ?n }')
+  assert.deepEqual(bindings.vars, ['n', 'unbound'])
+  const rows = await collect(bindings.rows)
+  assert.equal(rows.length, HEAD_LAST_ROWS)
+  assert.deepEqual([rows[0].n.value, rows.at(-1).n.value], ['0', String(HEAD_LAST_ROWS - 1)])
 })
 
 test('endpointSelect rejects a non-SELECT query before any request', async () => {

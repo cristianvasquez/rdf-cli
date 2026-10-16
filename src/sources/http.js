@@ -1,7 +1,6 @@
 import formats from '@rdfjs/formats'
 import { SparqlEndpointFetcher } from 'fetch-sparql-endpoint'
 import { Readable } from 'node:stream'
-import { once } from 'node:events'
 import rdf from 'rdf-ext'
 import { parseQuads } from './parse.js'
 import { assignDefaultGraph, scopeBlankNodes } from './paths.js'
@@ -71,10 +70,28 @@ function checkForm (sparql, query, forms) {
 export async function endpointSelect (endpoint, query, http) {
   const sparql = fetcher(http)
   checkForm(sparql, query, ['SELECT'])
-  const rows = await sparql.fetchBindings(endpoint, query)
-  // fetch-sparql-endpoint forwards the parser's head.vars event before rows.
-  const [variables] = await once(rows, 'variables')
-  return { vars: variables.map((variable) => variable.value), rows }
+  const stream = await sparql.fetchBindings(endpoint, query)
+  // head.vars can come after the results (JSON key order is free). Read and
+  // buffer rows until the variables event, or the parser stalls on full buffers.
+  const buffered = []
+  const variables = await new Promise((resolve, reject) => {
+    const onData = (row) => buffered.push(row)
+    const onError = (error) => done(() => reject(error))
+    const onEnd = () => done(() => reject(new Error('endpoint response has no head.vars')))
+    const onVariables = (vars) => done(() => resolve(vars))
+    function done (settle) {
+      stream.pause()
+      stream.off('data', onData).off('error', onError).off('end', onEnd).off('variables', onVariables)
+      settle()
+    }
+    stream.on('data', onData).once('error', onError).once('end', onEnd).once('variables', onVariables)
+  })
+  return { vars: variables.map((variable) => variable.value), rows: replay(buffered, stream) }
+}
+
+async function * replay (buffered, stream) {
+  yield * buffered
+  yield * stream
 }
 
 // CONSTRUCT or DESCRIBE on a remote endpoint: graphless triples. Asks for
