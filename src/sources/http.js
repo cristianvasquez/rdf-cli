@@ -74,23 +74,25 @@ export async function endpointSelect (endpoint, query, http) {
   // head.vars can come after the results (JSON key order is free). Read and
   // buffer rows until the variables event, or the parser stalls on full buffers.
   // With no head, the parsers emit [] at the end, after all rows are buffered.
+  // The 'error' listener stays for the life of the stream: an error can come
+  // in the same parser write as 'variables', or before the caller reads rows.
+  // It is recorded and thrown from replay, so it never stops the process.
+  // The caller must read rows to the end or call rows.return() to close the response.
   const buffered = []
+  const failure = {}
   const variables = await new Promise((resolve, reject) => {
     const onData = (row) => buffered.push(row)
-    const onError = (error) => done(() => reject(error))
-    const onVariables = (vars) => done(() => resolve(vars))
-    function done (settle) {
+    stream.on('error', (error) => {
+      failure.error ??= error
+      reject(error)
+    })
+    stream.on('data', onData).once('variables', (vars) => {
       stream.pause()
-      stream.off('data', onData).off('error', onError).off('variables', onVariables)
-      settle()
-    }
-    stream.on('data', onData).once('error', onError).once('variables', onVariables)
+      stream.off('data', onData)
+      resolve(vars)
+    })
   })
   const vars = variables.map((variable) => variable.value)
-  // Until the caller reads rows, nothing else listens for 'error': record it
-  // here, so it does not stop the process, and throw it from replay.
-  const failure = {}
-  stream.on('error', (error) => { failure.error ??= error })
   return { vars, rows: replay(vars, buffered, stream, failure) }
 }
 

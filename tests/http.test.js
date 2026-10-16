@@ -20,6 +20,7 @@ store.load(`
 `, { format: 'nt' })
 
 const HEAD_LAST_ROWS = 2000
+let resetDone
 
 let server
 let base
@@ -79,7 +80,14 @@ before(async () => {
     } else if (path === '/sparql-reset') {
       response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
       response.write('{"head":{"vars":["n"]},"results":{"bindings":[{"n":{"type":"literal","value":"0"}}')
-      setTimeout(() => response.socket.destroy(), 50)
+      setTimeout(() => {
+        response.socket.destroy()
+        resetDone()
+      }, 50)
+    } else if (path === '/sparql-error-after-head') {
+      // One write: the parser emits 'variables', then a syntax error.
+      response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
+      response.end('{"head":{"vars":["n"]},"results":x}')
     } else if (path === '/sparql-undeclared') {
       response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
       response.end('{"head":{"vars":["n"]},"results":{"bindings":[{"n":{"type":"literal","value":"0"}},{"x":{"type":"literal","value":"1"}}]}}')
@@ -181,9 +189,17 @@ test('endpointSelect rejects rows that bind variables not in head.vars, for any 
 })
 
 test('endpointSelect gives a stream error to the reader, also when it occurs before reading starts', async () => {
+  const reset = new Promise((resolve) => { resetDone = resolve })
   const bindings = await endpointSelect(`${base}/sparql-reset`, 'SELECT ?n WHERE { ?s ?p ?n }')
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  await reset
+  await new Promise((resolve) => setTimeout(resolve, 100))   // let the client see the reset
   await assert.rejects(collect(bindings.rows), /terminated/)
+})
+
+test('endpointSelect gives a parse error in the same write as head.vars to the reader', async () => {
+  const bindings = await endpointSelect(`${base}/sparql-error-after-head`, 'SELECT ?n WHERE { ?s ?p ?n }')
+  assert.deepEqual(bindings.vars, ['n'])
+  await assert.rejects(collect(bindings.rows))
 })
 
 test('endpointSelect rejects a non-SELECT query before any request', async () => {
