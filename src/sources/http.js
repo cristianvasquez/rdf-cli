@@ -87,19 +87,22 @@ export async function endpointSelect (endpoint, query, http) {
     stream.on('data', onData).once('error', onError).once('variables', onVariables)
   })
   const vars = variables.map((variable) => variable.value)
-  for (const row of buffered) {
-    const extra = Object.keys(row).find((key) => !vars.includes(key))
-    if (extra !== undefined) {
-      stream.destroy()
-      throw new Error(`endpoint response binds ?${extra}, which is not in head.vars`)
-    }
-  }
-  return { vars, rows: replay(buffered, stream) }
+  return { vars, rows: replay(vars, buffered, stream) }
 }
 
-async function * replay (buffered, stream) {
-  yield * buffered
-  yield * stream
+// Buffered rows first, then the rest. Every row may bind only head.vars.
+async function * replay (vars, buffered, stream) {
+  try {
+    for (const rows of [buffered, stream]) {
+      for await (const row of rows) {
+        const extra = Object.keys(row).find((key) => !vars.includes(key))
+        if (extra !== undefined) throw new Error(`endpoint response binds ?${extra}, which is not in head.vars`)
+        yield row
+      }
+    }
+  } finally {
+    stream.destroy()
+  }
 }
 
 // CONSTRUCT or DESCRIBE on a remote endpoint: graphless triples. Asks for
