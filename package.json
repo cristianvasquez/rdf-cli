@@ -12,6 +12,7 @@
     "./sinks": "./src/sinks/index.js",
     "./triplify": "./src/browser/triplify.js",
     "./canonical": "./src/serializers/canonical.js",
+    "./serializers": "./src/serializers/ntriples.js",
     "./pipeline": "./src/pipeline/index.js",
     "./package.json": "./package.json"
   },
