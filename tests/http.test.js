@@ -21,6 +21,7 @@ store.load(`
 
 const HEAD_LAST_ROWS = 2000
 let resetDone
+let badFirstClosed
 
 let server
 let base
@@ -84,6 +85,22 @@ before(async () => {
         response.socket.destroy()
         resetDone()
       }, 50)
+    } else if (path === '/sparql-bad-first') {
+      // Head last, an invalid first binding, then rows until the client closes.
+      response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
+      response.write('{"results":{"bindings":[{"n":{"type":"triple","value":{}}}')
+      let i = 0
+      const timer = setInterval(() => {
+        if (++i > 500) {
+          clearInterval(timer)
+          response.end(']},"head":{"vars":["n"]}}')
+          badFirstClosed('wrote to the end')
+        } else response.write(`,{"n":{"type":"literal","value":"${i}"}}`)
+      }, 5)
+      response.on('close', () => {
+        clearInterval(timer)
+        if (i <= 500) badFirstClosed('closed before the end')
+      })
     } else if (path === '/sparql-error-after-head') {
       // One write: the parser emits 'variables', then a syntax error.
       response.writeHead(200, { 'content-type': 'application/sparql-results+json' })
@@ -199,7 +216,13 @@ test('endpointSelect gives a stream error to the reader, also when it occurs bef
 test('endpointSelect gives a parse error in the same write as head.vars to the reader', async () => {
   const bindings = await endpointSelect(`${base}/sparql-error-after-head`, 'SELECT ?n WHERE { ?s ?p ?n }')
   assert.deepEqual(bindings.vars, ['n'])
-  await assert.rejects(collect(bindings.rows))
+  await assert.rejects(collect(bindings.rows), /Unexpected "x"/)
+})
+
+test('endpointSelect stops reading the response on an error before head.vars', { timeout: 10000 }, async () => {
+  const closed = new Promise((resolve) => { badFirstClosed = resolve })
+  await assert.rejects(endpointSelect(`${base}/sparql-bad-first`, 'SELECT ?n WHERE { ?s ?p ?n }'))
+  assert.equal(await closed, 'closed before the end')
 })
 
 test('endpointSelect rejects a non-SELECT query before any request', async () => {

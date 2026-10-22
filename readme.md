@@ -3,8 +3,10 @@ uuid: 7e28b748-491f-450a-a0d5-afb7f784df2b
 repo-uri: osg://repo/github.com/cristianvasquez/rdf-cli
 repo-name: rdf-cli
 layout: node.js
-tags: [repo/rdf]
+tags:
+  - repo/rdf
 repo-group: rdf
+notes: published
 ---
 
 # [rdf-cli](osg://repo/github.com/cristianvasquez/rdf-cli)

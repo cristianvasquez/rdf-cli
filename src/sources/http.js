@@ -70,7 +70,17 @@ function checkForm (sparql, query, forms) {
 export async function endpointSelect (endpoint, query, http) {
   const sparql = fetcher(http)
   checkForm(sparql, query, ['SELECT'])
-  const stream = await sparql.fetchBindings(endpoint, query)
+  // Destroying the parser stream does not stop the download: abort the request.
+  const controller = new AbortController()
+  const fetchWithAbort = (input, init = {}) => fetch(input, {
+    ...init,
+    signal: init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal,
+  })
+  const stream = await sparql.fetchBindings(endpoint, query, { fetch: fetchWithAbort })
+  const close = () => {
+    controller.abort()
+    stream.destroy()
+  }
   // head.vars can come after the results (JSON key order is free). Read and
   // buffer rows until the variables event, or the parser stalls on full buffers.
   // With no head, the parsers emit [] at the end, after all rows are buffered.
@@ -80,24 +90,30 @@ export async function endpointSelect (endpoint, query, http) {
   // The caller must read rows to the end or call rows.return() to close the response.
   const buffered = []
   const failure = {}
+  let settled = false
   const variables = await new Promise((resolve, reject) => {
     const onData = (row) => buffered.push(row)
     stream.on('error', (error) => {
       failure.error ??= error
+      if (!settled) {
+        stream.off('data', onData)
+        close()
+      }
       reject(error)
     })
     stream.on('data', onData).once('variables', (vars) => {
+      settled = true
       stream.pause()
       stream.off('data', onData)
       resolve(vars)
     })
   })
   const vars = variables.map((variable) => variable.value)
-  return { vars, rows: replay(vars, buffered, stream, failure) }
+  return { vars, rows: replay(vars, buffered, stream, failure, close) }
 }
 
 // Buffered rows first, then the rest. Every row may bind only head.vars.
-async function * replay (vars, buffered, stream, failure) {
+async function * replay (vars, buffered, stream, failure, close) {
   try {
     for (const rows of [buffered, stream]) {
       if (failure.error) throw failure.error
@@ -108,7 +124,7 @@ async function * replay (vars, buffered, stream, failure) {
       }
     }
   } finally {
-    stream.destroy()
+    close()
   }
 }
 

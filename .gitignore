@@ -1,3 +1,4 @@
 node_modules/
 research
 .
+.kata.local.toml
