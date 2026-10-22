@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  shacl-engine@1.1.3: 04317c805e914353586c178cff2649f4dc7f5c4f1f3538b7c6dbd5120211f649
+
 importers:
 
   .:
@@ -44,18 +47,14 @@ importers:
       rdf-ext:
         specifier: ^2.5.1
         version: 2.6.0
-      rdf-literal:
-        specifier: ^2.0.0
-        version: 2.0.0
       shacl-engine:
-        specifier: ~1.1.2
-        version: 1.1.2
+        specifier: ~1.1.3
+        version: 1.1.3(patch_hash=04317c805e914353586c178cff2649f4dc7f5c4f1f3538b7c6dbd5120211f649)
 
 packages:
 
   '@bergos/jsonparse@1.4.2':
     resolution: {integrity: sha512-qUt0QNJjvg4s1zk+AuLM6s/zcsQ8MvGn7+1f0vPuxvpCYa08YtTryuDInngbEyW5fNGGYe2znKt61RMGd5HnXg==}
-    engines: {'0': node >= 0.2.0}
 
   '@colors/colors@1.6.0':
     resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
@@ -1437,8 +1436,8 @@ packages:
   setimmediate@1.0.5:
     resolution: {integrity: sha512-MATJdZp8sLqDl/68LfQmbP8zKPLQNV6BIZoIgrscFDQ+RsvK/BxeDQOgyxKKoh0y/8h3BqVFnCqQ/gd+reiIXA==}
 
-  shacl-engine@1.1.2:
-    resolution: {integrity: sha512-ypclUwHJ6KPYUZb8ggslN7BSOwza9vgIwQgLY0oey0Xbzla6B7cRWroeDvfkntYzU1HnERgGvC/qsKge3a6s1Q==}
+  shacl-engine@1.1.3:
+    resolution: {integrity: sha512-nUm/aspWed3/aWe2knQF3hXl7oXEhP28UlXbYTCx+bGPEgazw27UHEpcIAAFXaJl/BC76X+DNbDH+p/rHvyS6Q==}
 
   shaclc-parse@1.4.3:
     resolution: {integrity: sha512-MQJWVFjfzzMUvieFO0STWjIo49ywy63UkVSsr0e8+8xHUns6X+i3yWYxNKd+GtSEJjBNZxxrUubog+hnd7PvRA==}
@@ -4204,7 +4203,7 @@ snapshots:
 
   '@rdfjs/types@1.1.2':
     dependencies:
-      '@types/node': 25.5.0
+      '@types/node': 18.19.130
 
   '@rdfjs/types@2.0.1':
     dependencies:
@@ -4301,7 +4300,7 @@ snapshots:
 
   '@types/readable-stream@2.3.15':
     dependencies:
-      '@types/node': 25.5.0
+      '@types/node': 18.19.130
       safe-buffer: 5.1.2
 
   '@types/readable-stream@4.0.23':
@@ -4866,7 +4865,7 @@ snapshots:
 
   setimmediate@1.0.5: {}
 
-  shacl-engine@1.1.2:
+  shacl-engine@1.1.3(patch_hash=04317c805e914353586c178cff2649f4dc7f5c4f1f3538b7c6dbd5120211f649):
     dependencies:
       '@comunica/query-sparql-rdfjs-lite': 5.4.1
       '@comunica/utils-bindings-factory': 5.4.0

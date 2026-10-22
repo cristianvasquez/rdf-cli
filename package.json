@@ -57,7 +57,6 @@
     "oxigraph": "^0.5.6",
     "rdf-canonize": "^5.0.0",
     "rdf-ext": "^2.5.1",
-    "rdf-literal": "^2.0.0",
-    "shacl-engine": "~1.1.2"
+    "shacl-engine": "~1.1.3"
   }
 }

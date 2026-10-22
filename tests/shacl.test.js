@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import rdf from 'rdf-ext'
+import { Validator } from 'shacl-engine'
 import { validate } from '../src/transforms/shacl.js'
 import { materialize } from '../src/transforms/sparql.js'
 import { streamFileQuads } from '../src/sources/paths.js'
@@ -59,7 +60,7 @@ test('validate summary carries conforms and violations', async () => {
   assert.ok(Array.isArray(summary.violations))
 })
 
-// Upstream shacl-engine bugs fixed in src/transforms/shaclFixes.js (rdf-ext/shacl-engine PR #90).
+// Regression tests for upstream fixes released in shacl-engine 1.1.3 (rdf-ext/shacl-engine PR #90).
 // Each case is shapes and data in one file, expected results from the PR's test manifest.
 
 async function violationsOf (name) {
@@ -85,6 +86,46 @@ test('validate: sh:qualifiedValueShape in a shape reached via sh:node', async ()
     [['http://example.org/citizen-b', 'http://www.w3.org/ns/shacl#NodeConstraintComponent']],
   )
 })
+
+// Catenary patch regressions: structural paths and repeated constraint parameters.
+const sh = (name) => rdf.namedNode(`http://www.w3.org/ns/shacl#${name}`)
+const iri = (name) => rdf.namedNode(`urn:${name}`)
+
+test('patched engine: skolemized inverse path is evaluated as a path', async () => {
+  const shapes = rdf.dataset([
+    rdf.quad(iri('shape'), sh('targetNode'), iri('x')),
+    rdf.quad(iri('shape'), sh('property'), iri('property')),
+    rdf.quad(iri('property'), sh('path'), iri('path')),
+    rdf.quad(iri('path'), sh('inversePath'), iri('p')),
+    rdf.quad(iri('property'), sh('minCount'), rdf.literal('1', rdf.namedNode('http://www.w3.org/2001/XMLSchema#integer'))),
+  ])
+  const validator = new Validator(shapes, { factory: rdf })
+  const valid = rdf.dataset([rdf.quad(iri('y'), iri('p'), iri('x'))])
+  assert.equal((await validator.validate({ dataset: valid })).conforms, true)
+  const invalid = rdf.dataset([rdf.quad(iri('x'), iri('unrelated'), iri('y'))])
+  assert.equal((await new Validator(shapes, { factory: rdf }).validate({ dataset: invalid })).conforms, false)
+})
+
+for (const constraint of ['hasValue', 'disjoint', 'equals', 'lessThan', 'lessThanOrEquals']) {
+  test(`patched engine: sh:${constraint} checks the second parameter`, async () => {
+    const isHasValue = constraint === 'hasValue'
+    const shapes = rdf.dataset([
+      rdf.quad(iri('shape'), sh('targetNode'), iri('x')),
+      rdf.quad(iri('shape'), sh('property'), iri('property')),
+      rdf.quad(iri('property'), sh('path'), iri('p')),
+      rdf.quad(iri('property'), sh(constraint), isHasValue ? rdf.literal('1') : iri('first')),
+      rdf.quad(iri('property'), sh(constraint), isHasValue ? rdf.literal('2') : iri('second')),
+    ])
+    const data = rdf.dataset([rdf.quad(iri('x'), iri('p'), rdf.literal('1'))])
+    if (!isHasValue) {
+      data.add(rdf.quad(iri('x'), iri('first'), rdf.literal(constraint === 'equals' ? '1' : '2')))
+      data.add(rdf.quad(iri('x'), iri('second'), rdf.literal(constraint === 'disjoint' ? '1' : '0')))
+    }
+    const report = await new Validator(shapes, { factory: rdf }).validate({ dataset: data })
+    assert.equal(report.conforms, false)
+    assert.equal(report.results.length, constraint === 'equals' ? 2 : 1)
+  })
+}
 
 test('validate: blank nodes of two shapes files stay apart', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'rdf-cli-shapes-'))

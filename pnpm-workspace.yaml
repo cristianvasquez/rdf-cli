@@ -1,0 +1,2 @@
+patchedDependencies:
+  shacl-engine@1.1.3: patches/shacl-engine@1.1.3.patch
