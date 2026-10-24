@@ -144,3 +144,27 @@ test('validate: blank nodes of two shapes files stay apart', async () => {
   assert.equal(summary.conforms, false)
   assert.equal(summary.violationCount, 1)
 })
+
+// Kata j8p0: rdf-validation 0.1.1 checks xsd:string with a regex without the `u` flag,
+// so a surrogate pair failed as two invalid code units. Patched in patches/rdf-validation@0.1.1.patch.
+test('validate: sh:datatype xsd:string accepts characters outside the BMP', async () => {
+  const summary = await violationsOf('shacl-string-non-bmp.trig')
+  assert.deepEqual(summary.violations, [])
+  assert.equal(summary.conforms, true)
+})
+
+// A lone surrogate cannot pass through TriG (the parser rejects the escape) or the oxigraph store,
+// so this case goes to the engine directly. U+DCE6 failed before the patch and must still fail.
+test('patched engine: sh:datatype xsd:string still rejects a lone surrogate', async () => {
+  const xsdString = rdf.namedNode('http://www.w3.org/2001/XMLSchema#string')
+  const shapes = rdf.dataset([
+    rdf.quad(iri('shape'), sh('targetNode'), iri('x')),
+    rdf.quad(iri('shape'), sh('property'), iri('property')),
+    rdf.quad(iri('property'), sh('path'), iri('p')),
+    rdf.quad(iri('property'), sh('datatype'), xsdString),
+  ])
+  const check = async (value) => (await new Validator(shapes, { factory: rdf })
+    .validate({ dataset: rdf.dataset([rdf.quad(iri('x'), iri('p'), rdf.literal(value, xsdString))]) })).conforms
+  assert.equal(await check('a\uDCE6b'), false)
+  assert.equal(await check('a\u{1F4E6}b'), true)
+})

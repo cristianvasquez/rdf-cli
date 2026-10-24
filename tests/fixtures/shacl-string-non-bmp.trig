@@ -1,0 +1,16 @@
+# sh:datatype xsd:string on literals with characters outside the BMP (kata j8p0).
+# Shapes in the default graph, data in a named graph. One literal per character, as \U escapes.
+@prefix ex: <http://example.org/>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+ex:TextShape a sh:NodeShape;
+  sh:targetClass ex:Text;
+  sh:property [ sh:path ex:value; sh:datatype xsd:string ].
+
+ex:data {
+  ex:u1F4E6 a ex:Text; ex:value "package \U0001F4E6".
+  ex:uF02CA a ex:Text; ex:value "private use \U000F02CA".
+  ex:uF17C a ex:Text; ex:value "private use ".
+  ex:u00E9 a ex:Text; ex:value "café".
+}
